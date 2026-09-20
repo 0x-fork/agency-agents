@@ -288,6 +288,35 @@ for tool in TOOLS:
     report(tool, bad_parse, bad_trip,
            "parse and round-trip" if fmt in ("yaml-fm", "toml") else "parse, carry their slug, and have their prose file")
 
+# --- Layer A (color): a grey agent should be a grey agent ---------------------
+# resolve_opencode_color() maps a name it does not know to #6B7280 and says
+# nothing, so a typo or an unlisted name (`slate`, `navy`) reaches users as a
+# deliberate-looking grey. Grey is a real choice for the agents that ask for it,
+# so the check is not "never grey" — it is "grey only when the source said so".
+GREY = "#6B7280"
+grey_names = {"gray", "grey", "#6b7280", "6b7280"}
+colour_bad = 0
+for f in sorted(glob.glob(os.path.join(OUT, "opencode", "agents", "*.md"))):
+    slug = os.path.splitext(os.path.basename(f))[0]
+    entry = src.get(slug)
+    if entry is None:
+        continue
+    try:
+        emitted = str(frontmatter(open(f, encoding="utf-8").read()).get("color", "")).strip()
+        source_color = str(frontmatter(open(os.path.join(R, entry[2]), encoding="utf-8").read())
+                           .get("color", "")).strip().lower()
+    except Exception:
+        continue   # the strict-parse pass above already reported this
+    if emitted.upper() == GREY and source_color not in grey_names:
+        colour_bad += 1
+        if colour_bad <= 3:
+            bad(f"opencode: {slug} asked for color {source_color!r} and got {GREY} — "
+                f"resolve_opencode_color() does not know that name")
+if colour_bad > 3:
+    bad(f"opencode: ...and {colour_bad-3} more colors silently replaced with grey")
+elif not colour_bad:
+    ok(f"opencode: every agent color resolves; none fell through to {GREY} by accident")
+
 # --- Layer A (split integrity): a source fenced block must survive whole -------
 # openclaw is the one tool that splits a single agent body across two files, at
 # `## ` headings: SOUL.md (persona) / AGENTS.md (operations). A heading inside a

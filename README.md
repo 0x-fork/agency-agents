@@ -733,7 +733,7 @@ The Agency works natively with Claude Code, and ships conversion + install scrip
 - **[Gemini CLI](https://github.com/google-gemini/gemini-cli)** -- `.md` agent files -> `~/.gemini/agents/`
 - **[OpenCode](https://opencode.ai)** — `.md` agent files → `.opencode/agents/`
 - **[Cursor](https://cursor.sh)** — `.mdc` rule files → `.cursor/rules/`
-- **[Aider](https://aider.chat)** — single `CONVENTIONS.md` → `./CONVENTIONS.md`
+- **[Aider](https://aider.chat)** — `CONVENTIONS.md` roster index → `./CONVENTIONS.md`
 - **[Windsurf](https://codeium.com/windsurf)** — single `.windsurfrules` → `./.windsurfrules`
 - **[OpenClaw](https://github.com/openclaw/openclaw)** — `SOUL.md` + `AGENTS.md` + `IDENTITY.md` per agent
 - **[Qwen Code](https://github.com/QwenLM/qwen-code)** — `.md` SubAgent files → `~/.qwen/agents/`
@@ -926,7 +926,10 @@ See [integrations/cursor/README.md](integrations/cursor/README.md) for details.
 <details>
 <summary><strong>Aider</strong></summary>
 
-All agents are compiled into a single `CONVENTIONS.md` file that Aider reads automatically.
+`CONVENTIONS.md` is the roster index — every agent's name, description, and the
+path to its full instructions. Aider keeps a conventions file in context for the
+whole session, and the 279 bodies together are about a million tokens, so the
+file lists the agents rather than inlining them.
 
 ```bash
 cd /your/project
@@ -936,6 +939,11 @@ cd /your/project
 Then reference agents in your Aider session:
 ```
 Use the Frontend Developer agent to refactor this component.
+```
+
+When you want an agent's full instructions, read its file in:
+```
+/read-only /path/to/agency-agents/engineering/engineering-frontend-developer.md
 ```
 
 See [integrations/aider/README.md](integrations/aider/README.md) for details.

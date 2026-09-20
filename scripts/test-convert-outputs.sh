@@ -353,6 +353,31 @@ if split_bad:
 else:
     ok(f"openclaw: all {N} agents keep every source fenced block whole in one output file")
 
+# --- Layer A (context budget): the Aider index has to stay an index ----------
+# Aider keeps a conventions file in context for the whole session. Inlining the
+# agent bodies made CONVENTIONS.md 3.8 million characters, which no model will
+# take, so it carries one index entry per agent instead: description plus the
+# path to the real file. Two things have to hold for that to be worth anything —
+# the file stays small enough to load, and every path it prints resolves.
+AIDER_INDEX_CEILING = 250_000
+aider_index = os.path.join(OUT, "aider", "CONVENTIONS.md")
+if os.path.isfile(aider_index):
+    text = open(aider_index, encoding="utf-8").read()
+    if len(text) > AIDER_INDEX_CEILING:
+        bad(f"aider: CONVENTIONS.md is {len(text):,} characters — it is loaded into "
+            f"every request, so it has to stay an index, not the agents themselves")
+    paths = re.findall(r"^Full instructions: (.+)$", text, re.M)
+    dangling = sorted({p for p in paths if not os.path.isfile(os.path.join(R, p))})
+    if len(paths) != N:
+        bad(f"aider: CONVENTIONS.md points at {len(paths)} agent files, roster has {N}")
+    elif dangling:
+        for d in dangling[:3]:
+            bad(f"aider: CONVENTIONS.md points at a file that does not exist: {d}")
+        if len(dangling) > 3:
+            bad(f"aider: ...and {len(dangling)-3} more dangling paths")
+    elif len(text) <= AIDER_INDEX_CEILING:
+        ok(f"aider: index is {len(text):,} characters and all {N} agent paths resolve")
+
 # --- Layer A (app-facing): every SOURCE frontmatter strict-parsed above -------
 for m in src_bad[:5]: bad(m)
 if len(src_bad) > 5: bad(f"...and {len(src_bad)-5} more source frontmatter problems")

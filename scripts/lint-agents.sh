@@ -112,6 +112,9 @@ lint_file() {
     if ! grep -qE -- "^${field}:" <<<"$frontmatter"; then
       echo "ERROR $file: missing frontmatter field '${field}'"
       errors=$((errors + 1))
+    elif [[ ! "$(get_field "$field" "$file")" =~ [^[:space:]] ]]; then
+      echo "ERROR $file: frontmatter field '${field}' must not be empty"
+      errors=$((errors + 1))
     fi
   done
 

@@ -36,4 +36,28 @@ assert_quoted \
   "$OUTPUT_DIR/qwen/agents/programmatic-display-buyer.md" \
   tools
 
-echo "PASS: converted YAML frontmatter keeps scalar values safely quoted"
+# A present but empty required field is unusable discovery metadata. Check the
+# source linter directly, including YAML's quoted empty-string form.
+cat > "$OUTPUT_DIR/agent.md" <<'EOF'
+---
+name: Example Agent
+description: Builds useful examples
+color: red
+---
+
+## Identity
+
+## Core Mission
+
+## Critical Rules
+
+EOF
+for field in name description color; do
+  sed "s/^${field}:.*/${field}: \"\"/" "$OUTPUT_DIR/agent.md" > "$OUTPUT_DIR/empty-$field.md"
+  if "$SCRIPT_DIR/lint-agents.sh" "$OUTPUT_DIR/empty-$field.md" > /dev/null; then
+    printf 'Expected linter to reject empty %s metadata\n' "$field" >&2
+    exit 1
+  fi
+done
+
+echo "PASS: converted YAML frontmatter stays quoted and required source metadata is nonempty"

@@ -199,8 +199,10 @@ src_bad = []
 for slug, (_gf_desc, _gf_name, path) in list(src.items()):
     try:
         data = frontmatter(open(os.path.join(R, path), encoding="utf-8").read())
-        assert isinstance(data, dict) and isinstance(data.get("name"), str) \
-            and isinstance(data.get("description"), str), "missing name/description"
+        assert isinstance(data, dict) and all(
+            isinstance(data.get(field), str) and data[field].strip()
+            for field in ("name", "description", "color")
+        ), "missing or empty name/description/color"
         assert data["description"][:1] not in ('"', "'"), "description starts with a quote character"
         src[slug] = (data["description"], data["name"], path)
     except Exception as e:

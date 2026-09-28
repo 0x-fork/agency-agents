@@ -174,9 +174,12 @@ def find_desc(obj):
     return None
 
 def frontmatter(text):
-    if not text.startswith("---"): raise ValueError("no frontmatter")
-    parts = text.split("\n---", 1)
-    return yaml.safe_load(parts[0][3:])
+    lines = text.splitlines()
+    if not lines or lines[0] != "---": raise ValueError("no frontmatter")
+    for end in range(1, len(lines)):
+        if lines[end] == "---":
+            return yaml.safe_load("\n".join(lines[1:end]))
+    raise ValueError("missing frontmatter closing ---")
 
 def parsed_desc(path, fmt):
     text = open(path, encoding="utf-8").read()

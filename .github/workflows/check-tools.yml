@@ -32,3 +32,6 @@ jobs:
 
       - name: Validate agent selection (install.sh --agent / --agents-file)
         run: bash scripts/test-agent-selection.sh
+
+      - name: Reject partial installs after conversion failure
+        run: bash scripts/test-install-conversion-failure.sh

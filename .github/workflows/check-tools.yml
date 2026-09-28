@@ -25,6 +25,9 @@ jobs:
       - name: Validate converted YAML frontmatter
         run: bash scripts/test-convert-frontmatter.sh
 
+      - name: Reject colliding agent slugs before conversion
+        run: bash scripts/test-convert-slug-collisions.sh
+
       - name: Validate converted outputs (round-trip, strict parse, counts, drift)
         # Drift is advisory on pull requests (agent PRs always move their own manifest line;
         # maintainers regenerate at landing) and enforced on pushes to main.

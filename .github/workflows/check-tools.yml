@@ -32,3 +32,6 @@ jobs:
 
       - name: Validate agent selection (install.sh --agent / --agents-file)
         run: bash scripts/test-agent-selection.sh
+
+      - name: Validate shared destinations for detected tools
+        run: bash scripts/test-install-all-path-collision.sh

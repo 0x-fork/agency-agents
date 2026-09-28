@@ -498,8 +498,11 @@ def drift_report(old_text):
     tools   = sorted(key for (k, key), h in cur.items() if k != "agent" and old.get((k, key)) != h)
     return changed, added, removed, tools
 
-if UPDATE:
+# Never make broken or incomplete generated output the new baseline.
+if UPDATE and not fails:
     open(MANIFEST, "w", newline="\n").write(new); ok(f"manifest written: {os.path.relpath(MANIFEST, R)}")
+elif UPDATE:
+    print("  SKIP manifest update: generated outputs failed validation")
 elif not os.path.exists(MANIFEST):
     bad(f"manifest missing: run with --update to create {os.path.relpath(MANIFEST, R)}")
 else:

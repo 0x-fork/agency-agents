@@ -32,3 +32,6 @@ jobs:
 
       - name: Validate agent selection (install.sh --agent / --agents-file)
         run: bash scripts/test-agent-selection.sh
+
+      - name: Protect unrelated Hermes destinations
+        run: bash scripts/test-install-hermes-destination.sh

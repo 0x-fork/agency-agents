@@ -331,7 +331,7 @@ def body_lines(text):
     """Mirror lib.sh's get_body, including `$(...)`'s trailing-newline strip."""
     out, fm = [], 0
     for line in text.split("\n"):
-        if line == "---":
+        if fm < 2 and line == "---":
             fm += 1
             continue
         if fm >= 2:

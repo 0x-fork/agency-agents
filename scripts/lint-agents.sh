@@ -96,6 +96,11 @@ lint_file() {
     errors=$((errors + 1))
     return
   fi
+  if ! awk 'NR > 1 && $0 == "---" {found = 1; exit} END {exit !found}' "$file"; then
+    echo "ERROR $file: missing frontmatter closing ---"
+    errors=$((errors + 1))
+    return
+  fi
 
   # Extract frontmatter (between first and second ---)
   local frontmatter

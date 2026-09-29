@@ -954,6 +954,7 @@ install_openclaw() {
   local dest; dest="$(resolve_dest openclaw "${HOME}/.openclaw/agency-agents")"
   local count=0
   local existing_agents=""
+  local failed_names=""   # a string, not an array: bash 3.2 + set -u rejects "${empty[@]}"
   [[ -d "$src" ]] || { err "integrations/openclaw missing. Run convert.sh first."; return 1; }
   mkdir -p "$dest"
   if command -v openclaw >/dev/null 2>&1; then
@@ -980,7 +981,9 @@ install_openclaw() {
       if [[ "$existing_agents" != *$'\n'"$name"$'\n'* ]]; then
         if ! openclaw agents add "$name" --workspace "$dest/$name" --non-interactive; then
           err "OpenClaw: failed to register '$name'; the copied workspace is not active."
-          return 1
+          # Keep registering the rest: one bad registration must not cost the others.
+          failed_names="${failed_names:+$failed_names }$name"
+          continue
         fi
       fi
     fi
@@ -993,6 +996,10 @@ install_openclaw() {
   ok "OpenClaw: $count workspaces -> $dest"
   if command -v openclaw >/dev/null 2>&1; then
     warn "OpenClaw: run 'openclaw gateway restart' to activate new agents"
+  fi
+  if [[ -n "$failed_names" ]]; then
+    err "OpenClaw: not registered: $failed_names. Their workspaces are copied; re-run to retry registration."
+    return 1
   fi
 }
 

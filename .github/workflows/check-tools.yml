@@ -44,3 +44,6 @@ jobs:
 
       - name: Validate shared destinations for detected tools
         run: bash scripts/test-install-all-path-collision.sh
+
+      - name: Validate complete selected installs
+        run: bash scripts/test-install-selection-completeness.sh

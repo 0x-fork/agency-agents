@@ -235,7 +235,9 @@ build_selection() {
 slug_allowed() {
   $SELECTION_ACTIVE || return 0
   local s="${1#agency-}"
-  printf '%s\n' "$_ALLOWED_SLUGS" | grep -qxF "$s"
+  # grep -q closes a pipe as soon as it finds an early match. With pipefail,
+  # printf may then get SIGPIPE and make a valid slug look unselected.
+  grep -qxF "$s" <<< "$_ALLOWED_SLUGS"
 }
 
 # selected_agent_count — how many agents the current selection installs.

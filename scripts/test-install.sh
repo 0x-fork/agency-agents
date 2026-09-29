@@ -288,6 +288,22 @@ assert_eq "$TOTAL_AGENTS" "$(count_md "$dest")" "installs into a path containing
 assert_eq 0 "$(find "$home" -maxdepth 1 -name 'My' -o -maxdepth 1 -name 'Agents' | wc -l | tr -d ' ')" \
   "a spaced path is not split into separate directories"
 
+# Windsurf's --path is a directory override, just like Aider's. A caller may
+# run this from another project, so installing into PWD silently edits the
+# wrong project's .windsurfrules.
+home="$(sandbox windsurf-path)"
+work="$home/current project"
+dest="$home/target project/rules"
+mkdir -p "$work"
+(cd "$work" && HOME="$home" bash "$INSTALL" --no-interactive --tool windsurf --path "$dest" > "$home/windsurf.log" 2>&1)
+assert_eq 0 "$?" "Windsurf --path install exits successfully"
+[[ -f "$dest/.windsurfrules" ]] \
+  && pass "Windsurf --path installs into the requested directory" \
+  || fail "Windsurf --path installs into the requested directory"
+[[ ! -e "$work/.windsurfrules" ]] \
+  && pass "Windsurf --path leaves the current project alone" \
+  || fail "Windsurf --path leaves the current project alone"
+
 # ---------------------------------------------------------------------------
 # 4b. Parallel workers get their arguments intact (PR #755)
 #

@@ -1390,6 +1390,9 @@ install_hermes() {
   local src="$INTEGRATIONS/hermes/agency-agents-router"
   local hermes_home; hermes_home="$(hermes_home_dir)"
   local dest; dest="$(resolve_dest hermes "${hermes_home}/plugins/agency-agents-router")"
+  # Strip trailing slashes first: basename ignores them, but `rm -rf link/`
+  # follows a symlink and empties its target instead of removing the link.
+  while [[ "$dest" == */ && "$dest" != "/" ]]; do dest="${dest%/}"; done
   # HERMES_PLUGIN_DIR is ambiguous: its name invites setting it to the plugins
   # parent (~/.hermes/plugins) rather than the full plugin path. Always target
   # the agency-agents-router subdir so we never rm -rf a shared plugins dir that
@@ -1417,7 +1420,12 @@ install_hermes() {
       return 1
     fi
   fi
-  rm -rf "$dest"
+  # A symlink (e.g. from an earlier --link install) is replaced, never followed.
+  if [[ -L "$dest" ]]; then
+    rm -f -- "$dest"
+  else
+    rm -rf -- "$dest"
+  fi
   if $USE_LINK; then
     ln -s "$src" "$dest"
   else

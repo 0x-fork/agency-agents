@@ -283,7 +283,17 @@ OVERRIDE_PATH=""      # --path (single-destination override)
 
 # install_file <src> <dest> — copy, or symlink when --link is set.
 install_file() {
-  if $USE_LINK; then ln -sf "$1" "$2"; else cp "$1" "$2"; fi
+  if $USE_LINK; then
+    ln -sf "$1" "$2"
+  else
+    local target="$2"
+    [[ -d "$target" ]] && target="${target%/}/$(basename "$1")"
+    if [[ -L "$target" ]]; then
+      err "Refusing to copy through a destination symlink: $target"
+      return 1
+    fi
+    cp "$1" "$2"
+  fi
 }
 
 # resolve_dest <tool> <default> — --path > $ENV_VAR > default.

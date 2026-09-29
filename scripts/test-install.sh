@@ -419,9 +419,26 @@ dest="$home/dest"
 mkdir -p "$dest"
 printf 'KEEP THIS FILE\n' > "$home/sentinel"
 ln -s "$home/sentinel" "$dest/$(basename "$FIRST_ENG_FILE")"
-run_install "$home" --tool claude-code --no-convert --agent "$FIRST_ENG_SLUG" --path "$dest"
-assert_eq 1 "$RUN_STATUS" "copy mode refuses an existing agent-file symlink"
+SECOND_ENG_FILE="$(agent_files_in engineering | awk 'NR==2')"
+SECOND_ENG_SLUG="$(agent_slug "$SECOND_ENG_FILE")"
+run_install "$home" --tool claude-code --no-convert --agent "$FIRST_ENG_SLUG,$SECOND_ENG_SLUG" --path "$dest"
+assert_eq 0 "$RUN_STATUS" "a foreign agent-file symlink is skipped, not fatal"
 assert_eq 'KEEP THIS FILE' "$(cat "$home/sentinel")" "symlink target is not overwritten"
+assert_eq true "$([[ -L "$dest/$(basename "$FIRST_ENG_FILE")" ]] && echo true || echo false)" "the foreign symlink itself is left in place"
+assert_eq true "$([[ -f "$dest/$(basename "$SECOND_ENG_FILE")" && ! -L "$dest/$(basename "$SECOND_ENG_FILE")" ]] && echo true || echo false)" "the rest of the selection still installs"
+assert_eq true "$(grep -q 'Not installed: 1 file' <<<"$RUN_OUT" && echo true || echo false)" "the summary reports the skipped file"
+
+# Switching from --link to a copy replaces our own links, and never writes
+# through them into the clone's source files.
+home="$(sandbox link-then-copy)"
+dest="$home/dest"
+src_sum="$(cksum < "$FIRST_ENG_FILE")"
+run_install "$home" --tool claude-code --no-convert --agent "$FIRST_ENG_SLUG" --path "$dest" --link
+assert_eq true "$([[ -L "$dest/$(basename "$FIRST_ENG_FILE")" ]] && echo true || echo false)" "--link installs a symlink"
+run_install "$home" --tool claude-code --no-convert --agent "$FIRST_ENG_SLUG" --path "$dest"
+assert_eq 0 "$RUN_STATUS" "a copy install over our own --link install succeeds"
+assert_eq true "$([[ -f "$dest/$(basename "$FIRST_ENG_FILE")" && ! -L "$dest/$(basename "$FIRST_ENG_FILE")" ]] && echo true || echo false)" "our own link is replaced by a real copy"
+assert_eq "$src_sum" "$(cksum < "$FIRST_ENG_FILE")" "the clone's source file is unchanged"
 
 # ---------------------------------------------------------------------------
 echo ""

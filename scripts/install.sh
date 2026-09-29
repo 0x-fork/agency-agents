@@ -289,8 +289,19 @@ install_file() {
     local target="$2"
     [[ -d "$target" ]] && target="${target%/}/$(basename "$1")"
     if [[ -L "$target" ]]; then
-      err "Refusing to copy through a destination symlink: $target"
-      return 1
+      # cp would follow the link and overwrite whatever it points at.
+      local link_to; link_to="$(readlink "$target")"
+      if [[ "$link_to" == "$REPO_ROOT/"* ]]; then
+        # Our own --link install: switching to a copy is the intended change.
+        rm -f -- "$target"
+      else
+        # Someone else's link: leave it and its target alone, keep installing
+        # the rest, and say so in the summary (one stray link must not abort
+        # the install halfway through the roster).
+        warn "Skipped $target — it is a symlink to $link_to; not overwriting it."
+        [[ -n "${SKIPPED_LOG:-}" ]] && printf '%s -> %s\n' "$target" "$link_to" >> "$SKIPPED_LOG"
+        return 0
+      fi
     fi
     cp "$1" "$2"
   fi
@@ -1496,6 +1507,9 @@ install_tool() {
 # Entry point
 # ---------------------------------------------------------------------------
 main() {
+  SKIPPED_LOG="$(mktemp "${TMPDIR:-/tmp}/agency-install-skipped.XXXXXX")"
+  export SKIPPED_LOG
+  trap 'rm -f "$SKIPPED_LOG"' EXIT
   local tool="all"
   local interactive_mode="auto"
   local use_parallel=false
@@ -1686,6 +1700,11 @@ main() {
   box_row "${C_GREEN}${C_BOLD}${msg}${C_RESET}"
   box_bot
   printf "\n"
+  if [[ -s "$SKIPPED_LOG" ]]; then
+    warn "Not installed: $(wc -l < "$SKIPPED_LOG" | tr -d ' ') file(s) whose destination is a symlink to somewhere else:"
+    sed 's/^/    /' "$SKIPPED_LOG" >&2
+    warn "Remove or replace those links, then re-run to install them."
+  fi
   dim "  Run ./scripts/convert.sh to regenerate after adding or editing agents."
   printf "\n"
 }

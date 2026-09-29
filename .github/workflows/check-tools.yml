@@ -41,3 +41,6 @@ jobs:
 
       - name: Reject partial installs after conversion failure
         run: bash scripts/test-install-conversion-failure.sh
+
+      - name: Validate shared destinations for detected tools
+        run: bash scripts/test-install-all-path-collision.sh

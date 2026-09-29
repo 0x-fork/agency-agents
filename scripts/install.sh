@@ -299,6 +299,24 @@ path_collision_group() {
   esac
 }
 
+# Validate after tool selection so --tool all and the interactive picker get
+# the same protection as an explicit comma-separated list.
+validate_path_collisions() {
+  [[ -n "$OVERRIDE_PATH" && $# -gt 1 ]] || return 0
+  local _ta _tb _ga _gb
+  for _ta in "$@"; do
+    _ga="$(path_collision_group "$_ta")"; [[ -z "$_ga" ]] && continue
+    for _tb in "$@"; do
+      [[ "$_tb" == "$_ta" ]] && continue
+      _gb="$(path_collision_group "$_tb")"
+      if [[ "$_ga" == "$_gb" ]]; then
+        err "--path is one shared directory, and $_ta and $_tb write the same filenames into it — they would overwrite each other. Use one of them per --path (tools with distinct outputs may share one)."
+        return 1
+      fi
+    done
+  done
+}
+
 resolve_dest() {
   local tool="$1" def="$2" var=""
   [[ -n "$OVERRIDE_PATH" ]] && { printf '%s' "$OVERRIDE_PATH"; return; }
@@ -1513,23 +1531,6 @@ main() {
       $duplicate || _cleaned+=("$_t")
     done
     _tool_list=("${_cleaned[@]}")
-    # --path is one shared directory. Tools that write the same filenames into
-    # it silently overwrite each other; tools with distinct outputs coexist.
-    # Refuse only the colliding combinations (see path_collision_group).
-    if [[ -n "$OVERRIDE_PATH" && ${#_tool_list[@]} -gt 1 ]]; then
-      local _ta _tb _ga _gb
-      for _ta in "${_tool_list[@]}"; do
-        _ga="$(path_collision_group "$_ta")"; [[ -z "$_ga" ]] && continue
-        for _tb in "${_tool_list[@]}"; do
-          [[ "$_tb" == "$_ta" ]] && continue
-          _gb="$(path_collision_group "$_tb")"
-          if [[ "$_ga" == "$_gb" ]]; then
-            err "--path is one shared directory, and $_ta and $_tb write the same filenames into it — they would overwrite each other. Use one of them per --path (tools with distinct outputs may share one)."
-            exit 1
-          fi
-        done
-      done
-    fi
   fi
 
   # Decide whether to show interactive UI
@@ -1570,6 +1571,9 @@ main() {
     dim "  Available: ${ALL_TOOLS[*]}"
     exit 0
   fi
+
+  # --tool all and the interactive wizard only know their selected tools now.
+  validate_path_collisions "${SELECTED_TOOLS[@]}"
 
   # --dry-run: print the plan and exit without writing anything.
   if $DRY_RUN; then

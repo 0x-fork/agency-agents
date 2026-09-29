@@ -47,3 +47,9 @@ jobs:
 
       - name: Validate complete selected installs
         run: bash scripts/test-install-selection-completeness.sh
+
+      - name: Surface parallel conversion failures and clean temp output
+        run: bash scripts/test-convert-parallel-failure.sh
+
+      - name: Reject unclosed agent frontmatter
+        run: bash scripts/test-frontmatter-closing.sh

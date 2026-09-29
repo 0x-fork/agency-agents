@@ -695,6 +695,35 @@ clean_tool_output() {
   find "$dir" -mindepth 1 -maxdepth 1 ! -name 'README.md' -exec rm -rf {} +
 }
 
+# Every per-agent integration writes to a path derived from the normalized
+# name. Refuse collisions before cleaning any existing output: otherwise the
+# later source file silently replaces the earlier agent in the generated tree.
+check_agent_slug_collisions() {
+  local dir dirpath file slug relative i
+  local seen_slugs=() seen_files=()
+  local collisions=0
+  for dir in "${AGENT_DIRS[@]}"; do
+    dirpath="$REPO_ROOT/$dir"
+    [[ -d "$dirpath" ]] || continue
+    while IFS= read -r -d '' file; do
+      is_agent_file "$file" || continue
+      slug="$(agent_slug "$file")"
+      [[ -n "$slug" ]] || continue
+      relative="${file#"$REPO_ROOT"/}"
+      for i in "${!seen_slugs[@]}"; do
+        if [[ "${seen_slugs[i]}" == "$slug" ]]; then
+          error "duplicate agent slug '$slug': ${seen_files[i]} and $relative"
+          collisions=$((collisions + 1))
+          break
+        fi
+      done
+      seen_slugs+=("$slug")
+      seen_files+=("$relative")
+    done < <(find "$dirpath" -name "*.md" -type f -print0)
+  done
+  (( collisions == 0 ))
+}
+
 run_conversions() {
   local tool="$1"
   local count=0
@@ -771,6 +800,8 @@ main() {
     error "Unknown tool '$tool'. Valid: ${valid_tools[*]}"
     exit 1
   fi
+
+  check_agent_slug_collisions || exit 1
 
   header "The Agency -- Converting agents to tool-specific formats"
   echo "  Repo:   $REPO_ROOT"

@@ -96,6 +96,11 @@ lint_file() {
     errors=$((errors + 1))
     return
   fi
+  if ! awk 'NR > 1 && $0 == "---" {found = 1; exit} END {exit !found}' "$file"; then
+    echo "ERROR $file: missing frontmatter closing ---"
+    errors=$((errors + 1))
+    return
+  fi
 
   # Extract frontmatter (between first and second ---)
   local frontmatter
@@ -111,6 +116,9 @@ lint_file() {
   for field in "${REQUIRED_FRONTMATTER[@]}"; do
     if ! grep -qE -- "^${field}:" <<<"$frontmatter"; then
       echo "ERROR $file: missing frontmatter field '${field}'"
+      errors=$((errors + 1))
+    elif [[ ! "$(get_field "$field" "$file")" =~ [^[:space:]] ]]; then
+      echo "ERROR $file: frontmatter field '${field}' must not be empty"
       errors=$((errors + 1))
     fi
   done

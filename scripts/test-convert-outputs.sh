@@ -174,9 +174,12 @@ def find_desc(obj):
     return None
 
 def frontmatter(text):
-    if not text.startswith("---"): raise ValueError("no frontmatter")
-    parts = text.split("\n---", 1)
-    return yaml.safe_load(parts[0][3:])
+    lines = text.splitlines()
+    if not lines or lines[0] != "---": raise ValueError("no frontmatter")
+    for end in range(1, len(lines)):
+        if lines[end] == "---":
+            return yaml.safe_load("\n".join(lines[1:end]))
+    raise ValueError("missing frontmatter closing ---")
 
 def parsed_desc(path, fmt):
     text = open(path, encoding="utf-8").read()
@@ -199,8 +202,10 @@ src_bad = []
 for slug, (_gf_desc, _gf_name, path) in list(src.items()):
     try:
         data = frontmatter(open(os.path.join(R, path), encoding="utf-8").read())
-        assert isinstance(data, dict) and isinstance(data.get("name"), str) \
-            and isinstance(data.get("description"), str), "missing name/description"
+        assert isinstance(data, dict) and all(
+            isinstance(data.get(field), str) and data[field].strip()
+            for field in ("name", "description", "color")
+        ), "missing or empty name/description/color"
         assert data["description"][:1] not in ('"', "'"), "description starts with a quote character"
         src[slug] = (data["description"], data["name"], path)
     except Exception as e:
@@ -331,7 +336,7 @@ def body_lines(text):
     """Mirror lib.sh's get_body, including `$(...)`'s trailing-newline strip."""
     out, fm = [], 0
     for line in text.split("\n"):
-        if line == "---":
+        if fm < 2 and line == "---":
             fm += 1
             continue
         if fm >= 2:
@@ -498,8 +503,11 @@ def drift_report(old_text):
     tools   = sorted(key for (k, key), h in cur.items() if k != "agent" and old.get((k, key)) != h)
     return changed, added, removed, tools
 
-if UPDATE:
+# Never make broken or incomplete generated output the new baseline.
+if UPDATE and not fails:
     open(MANIFEST, "w", newline="\n").write(new); ok(f"manifest written: {os.path.relpath(MANIFEST, R)}")
+elif UPDATE:
+    print("  SKIP manifest update: generated outputs failed validation")
 elif not os.path.exists(MANIFEST):
     bad(f"manifest missing: run with --update to create {os.path.relpath(MANIFEST, R)}")
 else:

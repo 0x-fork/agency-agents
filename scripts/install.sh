@@ -235,7 +235,9 @@ build_selection() {
 slug_allowed() {
   $SELECTION_ACTIVE || return 0
   local s="${1#agency-}"
-  printf '%s\n' "$_ALLOWED_SLUGS" | grep -qxF "$s"
+  # grep -q closes a pipe as soon as it finds an early match. With pipefail,
+  # printf may then get SIGPIPE and make a valid slug look unselected.
+  grep -qxF "$s" <<< "$_ALLOWED_SLUGS"
 }
 
 # selected_agent_count — how many agents the current selection installs.
@@ -297,6 +299,24 @@ path_collision_group() {
     antigravity|osaurus|dsh)         printf 'agency-skill' ;;   # agency-<slug>/SKILL.md
     *)                               printf '' ;;
   esac
+}
+
+# Validate after tool selection so --tool all and the interactive picker get
+# the same protection as an explicit comma-separated list.
+validate_path_collisions() {
+  [[ -n "$OVERRIDE_PATH" && $# -gt 1 ]] || return 0
+  local _ta _tb _ga _gb
+  for _ta in "$@"; do
+    _ga="$(path_collision_group "$_ta")"; [[ -z "$_ga" ]] && continue
+    for _tb in "$@"; do
+      [[ "$_tb" == "$_ta" ]] && continue
+      _gb="$(path_collision_group "$_tb")"
+      if [[ "$_ga" == "$_gb" ]]; then
+        err "--path is one shared directory, and $_ta and $_tb write the same filenames into it — they would overwrite each other. Use one of them per --path (tools with distinct outputs may share one)."
+        return 1
+      fi
+    done
+  done
 }
 
 resolve_dest() {
@@ -361,9 +381,18 @@ ensure_converted() {
   # other than the README count as output.
   if [[ ! -d "$d" ]] || [[ -z "$(find "$d" -type f ! -name 'README.md' 2>/dev/null | head -1)" ]]; then
     warn "$tool: integration files missing — running convert.sh --tool $tool"
-    "$SCRIPT_DIR/convert.sh" --tool "$tool" >/dev/null 2>&1 \
-      && ok "$tool: generated integration files" \
-      || err "$tool: convert.sh failed; run it manually"
+    if "$SCRIPT_DIR/convert.sh" --tool "$tool" >/dev/null 2>&1; then
+      ok "$tool: generated integration files"
+    else
+      # A failed conversion may have written only part of the roster. Remove
+      # that partial output so the next install retries conversion instead of
+      # treating it as a complete generated integration.
+      if [[ -d "$d" ]]; then
+        find "$d" -mindepth 1 -maxdepth 1 ! -name 'README.md' -exec rm -rf {} +
+      fi
+      err "$tool: convert.sh failed; run it manually"
+      return 1
+    fi
   fi
 }
 AUTO_CONVERT=true     # --no-convert disables
@@ -779,21 +808,27 @@ install_claude_code() {
 
 install_copilot() {
   local dest_github; dest_github="$(resolve_dest copilot "${HOME}/.github/agents")"
-  local dest_copilot="${HOME}/.copilot/agents"
+  local dest_copilot=""
+  # The two default locations are intentional, but an explicit destination
+  # must not also write into the user's default Copilot directory.
+  if [[ -z "$OVERRIDE_PATH" && -z "${COPILOT_AGENT_DIR:-}" ]]; then
+    dest_copilot="${HOME}/.copilot/agents"
+  fi
   local count=0 dir f slug
-  mkdir -p "$dest_github" "$dest_copilot"
+  mkdir -p "$dest_github"
+  [[ -n "$dest_copilot" ]] && mkdir -p "$dest_copilot"
   for dir in "${AGENT_DIRS[@]}"; do
     [[ -d "$REPO_ROOT/$dir" ]] || continue
     while IFS= read -r -d '' f; do
       is_agent_file "$f" || continue
       slug="$(agent_slug "$f")"; slug_allowed "$slug" || continue
       install_file "$f" "$dest_github/"
-      install_file "$f" "$dest_copilot/"
+      [[ -n "$dest_copilot" ]] && install_file "$f" "$dest_copilot/"
       incr count
     done < <(find "$REPO_ROOT/$dir" -name "*.md" -type f -print0)
   done
   ok "Copilot: $count agents -> $dest_github"
-  ok "Copilot: $count agents -> $dest_copilot"
+  [[ -n "$dest_copilot" ]] && ok "Copilot: $count agents -> $dest_copilot"
   warn "Copilot: Verify VS Code setting 'chat.agentFilesLocations' includes your install path."
   dim  "         Open Settings (Ctrl/Cmd+,) -> search 'chat.agentFilesLocations'"
 }
@@ -946,8 +981,10 @@ install_cursor() {
 
 install_aider() {
   local src="$INTEGRATIONS/aider/CONVENTIONS.md"
-  local dest="${PWD}/CONVENTIONS.md"
+  local dest_dir; dest_dir="$(resolve_dest aider "$PWD")"
+  local dest="$dest_dir/CONVENTIONS.md"
   [[ -f "$src" ]] || { err "integrations/aider/CONVENTIONS.md missing. Run convert.sh first."; return 1; }
+  mkdir -p "$dest_dir"
   if [[ -f "$dest" ]]; then
     # Never overwrite: CONVENTIONS.md is aider's own user-authored file, and the
     # one sitting here may well be the reader's rather than ours. But the guard
@@ -1353,6 +1390,9 @@ install_hermes() {
   local src="$INTEGRATIONS/hermes/agency-agents-router"
   local hermes_home; hermes_home="$(hermes_home_dir)"
   local dest; dest="$(resolve_dest hermes "${hermes_home}/plugins/agency-agents-router")"
+  # Strip trailing slashes first: basename ignores them, but `rm -rf link/`
+  # follows a symlink and empties its target instead of removing the link.
+  while [[ "$dest" == */ && "$dest" != "/" ]]; do dest="${dest%/}"; done
   # HERMES_PLUGIN_DIR is ambiguous: its name invites setting it to the plugins
   # parent (~/.hermes/plugins) rather than the full plugin path. Always target
   # the agency-agents-router subdir so we never rm -rf a shared plugins dir that
@@ -1370,7 +1410,22 @@ install_hermes() {
     err "Hermes: refusing to remove '$dest' — expected an agency-agents-router directory."
     return 1
   fi
-  rm -rf "$dest"
+  # The basename alone does not establish ownership: --path or an existing
+  # Hermes setup may point here with unrelated user files. Replace only a
+  # previous copy of this plugin, identified by its generated manifest.
+  if [[ -e "$dest" || -L "$dest" ]]; then
+    if [[ ! -f "$dest/plugin.yaml" ]] || \
+       ! grep -Eq '^[[:space:]]*name:[[:space:]]*agency-agents-router[[:space:]]*$' "$dest/plugin.yaml"; then
+      err "Hermes: refusing to replace '$dest' because it is not an existing agency-agents-router plugin."
+      return 1
+    fi
+  fi
+  # A symlink (e.g. from an earlier --link install) is replaced, never followed.
+  if [[ -L "$dest" ]]; then
+    rm -f -- "$dest"
+  else
+    rm -rf -- "$dest"
+  fi
   if $USE_LINK; then
     ln -s "$src" "$dest"
   else
@@ -1486,23 +1541,6 @@ main() {
       $duplicate || _cleaned+=("$_t")
     done
     _tool_list=("${_cleaned[@]}")
-    # --path is one shared directory. Tools that write the same filenames into
-    # it silently overwrite each other; tools with distinct outputs coexist.
-    # Refuse only the colliding combinations (see path_collision_group).
-    if [[ -n "$OVERRIDE_PATH" && ${#_tool_list[@]} -gt 1 ]]; then
-      local _ta _tb _ga _gb
-      for _ta in "${_tool_list[@]}"; do
-        _ga="$(path_collision_group "$_ta")"; [[ -z "$_ga" ]] && continue
-        for _tb in "${_tool_list[@]}"; do
-          [[ "$_tb" == "$_ta" ]] && continue
-          _gb="$(path_collision_group "$_tb")"
-          if [[ "$_ga" == "$_gb" ]]; then
-            err "--path is one shared directory, and $_ta and $_tb write the same filenames into it — they would overwrite each other. Use one of them per --path (tools with distinct outputs may share one)."
-            exit 1
-          fi
-        done
-      done
-    fi
   fi
 
   # Decide whether to show interactive UI
@@ -1543,6 +1581,9 @@ main() {
     dim "  Available: ${ALL_TOOLS[*]}"
     exit 0
   fi
+
+  # --tool all and the interactive wizard only know their selected tools now.
+  validate_path_collisions "${SELECTED_TOOLS[@]}"
 
   # --dry-run: print the plan and exit without writing anything.
   if $DRY_RUN; then

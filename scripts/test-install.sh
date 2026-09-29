@@ -173,18 +173,27 @@ run_install "$home" --tool claude-code --path "$dest"
 assert_eq "$TOTAL_AGENTS" "$(count_md "$dest")" "--path overrides the default destination"
 assert_eq 0 "$(count_md "$home/.claude/agents")" "--path leaves the default destination empty"
 
+home="$(sandbox copilot-default)"
+run_install "$home" --tool copilot --agent "$FIRST_ENG_SLUG"
+assert_eq 1 "$(count_md "$home/.github/agents")" "Copilot defaults to the GitHub agents directory"
+assert_eq 1 "$(count_md "$home/.copilot/agents")" "Copilot also installs into the Copilot agents directory by default"
+
 # Env var override, and --path winning over it. COPILOT_AGENT_DIR is used here
 # because it unambiguously names the agents directory itself.
 home="$(sandbox env-override)"
 dest="$home/from-env"
 RUN_OUT="$(HOME="$home" COPILOT_AGENT_DIR="$dest" "$INSTALL" --no-interactive --tool copilot 2>&1)"
 assert_eq "$TOTAL_AGENTS" "$(count_md "$dest")" "COPILOT_AGENT_DIR overrides the default destination"
+assert_eq 0 "$(count_md "$home/.github/agents")" "COPILOT_AGENT_DIR leaves the GitHub default empty"
+assert_eq 0 "$(count_md "$home/.copilot/agents")" "COPILOT_AGENT_DIR leaves the Copilot default empty"
 
 home="$(sandbox env-vs-path)"
 RUN_OUT="$(HOME="$home" COPILOT_AGENT_DIR="$home/from-env" "$INSTALL" --no-interactive \
   --tool copilot --path "$home/from-flag" 2>&1)"
 assert_eq "$TOTAL_AGENTS" "$(count_md "$home/from-flag")" "--path wins over the env var"
 assert_eq 0 "$(count_md "$home/from-env")" "env var destination is unused when --path is given"
+assert_eq 0 "$(count_md "$home/.github/agents")" "Copilot --path leaves the GitHub default empty"
+assert_eq 0 "$(count_md "$home/.copilot/agents")" "Copilot --path leaves the Copilot default empty"
 
 # ---------------------------------------------------------------------------
 # 3b. CLAUDE_CONFIG_DIR is the config root, not the agents dir (issue #578)

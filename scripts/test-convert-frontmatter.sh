@@ -8,6 +8,26 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/agency-convert-frontmatter.XXXXXX")"
 trap 'rm -rf "$OUTPUT_DIR"' EXIT
 
+# Body separators are Markdown content, not additional frontmatter fences.
+# get_body feeds the bodies used by the integration converters below.
+. "$SCRIPT_DIR/lib.sh"
+cat > "$OUTPUT_DIR/body-with-separator.md" <<'EOF'
+---
+name: Example
+---
+
+# Example
+
+---
+
+Important body text.
+EOF
+separator_count="$(get_body "$OUTPUT_DIR/body-with-separator.md" | grep -cx -- '---' || true)"
+[[ "$separator_count" == 1 ]] || {
+  printf 'Expected Markdown separator in agent body, got %s\n' "$separator_count" >&2
+  exit 1
+}
+
 for tool in gemini-cli opencode qwen; do
   "$SCRIPT_DIR/convert.sh" --tool "$tool" --out "$OUTPUT_DIR" >/dev/null
 done

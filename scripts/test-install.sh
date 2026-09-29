@@ -288,6 +288,22 @@ assert_eq "$TOTAL_AGENTS" "$(count_md "$dest")" "installs into a path containing
 assert_eq 0 "$(find "$home" -maxdepth 1 -name 'My' -o -maxdepth 1 -name 'Agents' | wc -l | tr -d ' ')" \
   "a spaced path is not split into separate directories"
 
+# Windsurf's --path is a directory override, just like Aider's. A caller may
+# run this from another project, so installing into PWD silently edits the
+# wrong project's .windsurfrules.
+home="$(sandbox windsurf-path)"
+work="$home/current project"
+dest="$home/target project/rules"
+mkdir -p "$work"
+(cd "$work" && HOME="$home" bash "$INSTALL" --no-interactive --tool windsurf --path "$dest" > "$home/windsurf.log" 2>&1)
+assert_eq 0 "$?" "Windsurf --path install exits successfully"
+[[ -f "$dest/.windsurfrules" ]] \
+  && pass "Windsurf --path installs into the requested directory" \
+  || fail "Windsurf --path installs into the requested directory"
+[[ ! -e "$work/.windsurfrules" ]] \
+  && pass "Windsurf --path leaves the current project alone" \
+  || fail "Windsurf --path leaves the current project alone"
+
 # ---------------------------------------------------------------------------
 # 4b. Parallel workers get their arguments intact (PR #755)
 #
@@ -395,6 +411,34 @@ run_install "$home" --tool claude-code --division engineering --path "$dest"
 first=$(count_md "$dest")
 run_install "$home" --tool claude-code --division engineering --path "$dest"
 assert_eq "$first" "$(count_md "$dest")" "re-running installs the same set, not duplicates"
+
+# A project-owned symlink with an agent's filename must not redirect a copy
+# into another file outside the selected destination.
+home="$(sandbox symlink-destination)"
+dest="$home/dest"
+mkdir -p "$dest"
+printf 'KEEP THIS FILE\n' > "$home/sentinel"
+ln -s "$home/sentinel" "$dest/$(basename "$FIRST_ENG_FILE")"
+SECOND_ENG_FILE="$(agent_files_in engineering | awk 'NR==2')"
+SECOND_ENG_SLUG="$(agent_slug "$SECOND_ENG_FILE")"
+run_install "$home" --tool claude-code --no-convert --agent "$FIRST_ENG_SLUG,$SECOND_ENG_SLUG" --path "$dest"
+assert_eq 0 "$RUN_STATUS" "a foreign agent-file symlink is skipped, not fatal"
+assert_eq 'KEEP THIS FILE' "$(cat "$home/sentinel")" "symlink target is not overwritten"
+assert_eq true "$([[ -L "$dest/$(basename "$FIRST_ENG_FILE")" ]] && echo true || echo false)" "the foreign symlink itself is left in place"
+assert_eq true "$([[ -f "$dest/$(basename "$SECOND_ENG_FILE")" && ! -L "$dest/$(basename "$SECOND_ENG_FILE")" ]] && echo true || echo false)" "the rest of the selection still installs"
+assert_eq true "$(grep -q 'Not installed: 1 file' <<<"$RUN_OUT" && echo true || echo false)" "the summary reports the skipped file"
+
+# Switching from --link to a copy replaces our own links, and never writes
+# through them into the clone's source files.
+home="$(sandbox link-then-copy)"
+dest="$home/dest"
+src_sum="$(cksum < "$FIRST_ENG_FILE")"
+run_install "$home" --tool claude-code --no-convert --agent "$FIRST_ENG_SLUG" --path "$dest" --link
+assert_eq true "$([[ -L "$dest/$(basename "$FIRST_ENG_FILE")" ]] && echo true || echo false)" "--link installs a symlink"
+run_install "$home" --tool claude-code --no-convert --agent "$FIRST_ENG_SLUG" --path "$dest"
+assert_eq 0 "$RUN_STATUS" "a copy install over our own --link install succeeds"
+assert_eq true "$([[ -f "$dest/$(basename "$FIRST_ENG_FILE")" && ! -L "$dest/$(basename "$FIRST_ENG_FILE")" ]] && echo true || echo false)" "our own link is replaced by a real copy"
+assert_eq "$src_sum" "$(cksum < "$FIRST_ENG_FILE")" "the clone's source file is unchanged"
 
 # ---------------------------------------------------------------------------
 echo ""

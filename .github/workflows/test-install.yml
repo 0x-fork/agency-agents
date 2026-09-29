@@ -28,3 +28,4 @@ jobs:
         run: |
           chmod +x scripts/test-install.sh scripts/install.sh
           ./scripts/test-install.sh
+          bash scripts/test-install-openclaw-registration.sh

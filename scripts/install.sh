@@ -283,7 +283,28 @@ OVERRIDE_PATH=""      # --path (single-destination override)
 
 # install_file <src> <dest> — copy, or symlink when --link is set.
 install_file() {
-  if $USE_LINK; then ln -sf "$1" "$2"; else cp "$1" "$2"; fi
+  if $USE_LINK; then
+    ln -sf "$1" "$2"
+  else
+    local target="$2"
+    [[ -d "$target" ]] && target="${target%/}/$(basename "$1")"
+    if [[ -L "$target" ]]; then
+      # cp would follow the link and overwrite whatever it points at.
+      local link_to; link_to="$(readlink "$target")"
+      if [[ "$link_to" == "$REPO_ROOT/"* ]]; then
+        # Our own --link install: switching to a copy is the intended change.
+        rm -f -- "$target"
+      else
+        # Someone else's link: leave it and its target alone, keep installing
+        # the rest, and say so in the summary (one stray link must not abort
+        # the install halfway through the roster).
+        warn "Skipped $target — it is a symlink to $link_to; not overwriting it."
+        [[ -n "${SKIPPED_LOG:-}" ]] && printf '%s -> %s\n' "$target" "$link_to" >> "$SKIPPED_LOG"
+        return 0
+      fi
+    fi
+    cp "$1" "$2"
+  fi
 }
 
 # resolve_dest <tool> <default> — --path > $ENV_VAR > default.
@@ -933,10 +954,19 @@ install_openclaw() {
   local dest; dest="$(resolve_dest openclaw "${HOME}/.openclaw/agency-agents")"
   local count=0
   local existing_agents=""
+  local failed_names=""   # a string, not an array: bash 3.2 + set -u rejects "${empty[@]}"
   [[ -d "$src" ]] || { err "integrations/openclaw missing. Run convert.sh first."; return 1; }
   mkdir -p "$dest"
   if command -v openclaw >/dev/null 2>&1; then
-    existing_agents=$'\n'"$(openclaw agents list --json 2>/dev/null | sed -n 's/^[[:space:]]*\"id\": \"\\([^\"]*\\)\".*/\\1/p')"$'\n'
+    local agents_json
+    if ! agents_json="$(openclaw agents list --json 2>/dev/null)"; then
+      err "OpenClaw: could not list registered agents; refusing to guess which workspaces need registration."
+      return 1
+    fi
+    # IDs may appear in compact or pretty JSON, and several may share a line.
+    # Agent IDs are slugs, so quoted id tokens need no JSON parser dependency.
+    existing_agents=$'\n'"$(printf '%s' "$agents_json" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+      | sed -E 's/^"id"[[:space:]]*:[[:space:]]*"([^"]*)"$/\1/' || true)"$'\n'
   fi
   local d
   while IFS= read -r -d '' d; do
@@ -949,7 +979,12 @@ install_openclaw() {
     install_file "$d/IDENTITY.md" "$dest/$name/IDENTITY.md"
     if command -v openclaw >/dev/null 2>&1; then
       if [[ "$existing_agents" != *$'\n'"$name"$'\n'* ]]; then
-        openclaw agents add "$name" --workspace "$dest/$name" --non-interactive || true
+        if ! openclaw agents add "$name" --workspace "$dest/$name" --non-interactive; then
+          err "OpenClaw: failed to register '$name'; the copied workspace is not active."
+          # Keep registering the rest: one bad registration must not cost the others.
+          failed_names="${failed_names:+$failed_names }$name"
+          continue
+        fi
       fi
     fi
     (( count++ )) || true
@@ -961,6 +996,10 @@ install_openclaw() {
   ok "OpenClaw: $count workspaces -> $dest"
   if command -v openclaw >/dev/null 2>&1; then
     warn "OpenClaw: run 'openclaw gateway restart' to activate new agents"
+  fi
+  if [[ -n "$failed_names" ]]; then
+    err "OpenClaw: not registered: $failed_names. Their workspaces are copied; re-run to retry registration."
+    return 1
   fi
 }
 
@@ -1014,8 +1053,10 @@ install_aider() {
 
 install_windsurf() {
   local src="$INTEGRATIONS/windsurf/.windsurfrules"
-  local dest="${PWD}/.windsurfrules"
+  local dest_dir; dest_dir="$(resolve_dest windsurf "$PWD")"
+  local dest="$dest_dir/.windsurfrules"
   [[ -f "$src" ]] || { err "integrations/windsurf/.windsurfrules missing. Run convert.sh first."; return 1; }
+  mkdir -p "$dest_dir"
   if [[ -f "$dest" ]]; then
     warn "Windsurf: .windsurfrules already exists at $dest (remove to reinstall)."
     return 0
@@ -1473,6 +1514,9 @@ install_tool() {
 # Entry point
 # ---------------------------------------------------------------------------
 main() {
+  SKIPPED_LOG="$(mktemp "${TMPDIR:-/tmp}/agency-install-skipped.XXXXXX")"
+  export SKIPPED_LOG
+  trap 'rm -f "$SKIPPED_LOG"' EXIT
   local tool="all"
   local interactive_mode="auto"
   local use_parallel=false
@@ -1663,6 +1707,11 @@ main() {
   box_row "${C_GREEN}${C_BOLD}${msg}${C_RESET}"
   box_bot
   printf "\n"
+  if [[ -s "$SKIPPED_LOG" ]]; then
+    warn "Not installed: $(wc -l < "$SKIPPED_LOG" | tr -d ' ') file(s) whose destination is a symlink to somewhere else:"
+    sed 's/^/    /' "$SKIPPED_LOG" >&2
+    warn "Remove or replace those links, then re-run to install them."
+  fi
   dim "  Run ./scripts/convert.sh to regenerate after adding or editing agents."
   printf "\n"
 }

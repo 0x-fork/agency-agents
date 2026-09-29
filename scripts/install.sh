@@ -952,8 +952,10 @@ install_cursor() {
 
 install_aider() {
   local src="$INTEGRATIONS/aider/CONVENTIONS.md"
-  local dest="${PWD}/CONVENTIONS.md"
+  local dest_dir; dest_dir="$(resolve_dest aider "$PWD")"
+  local dest="$dest_dir/CONVENTIONS.md"
   [[ -f "$src" ]] || { err "integrations/aider/CONVENTIONS.md missing. Run convert.sh first."; return 1; }
+  mkdir -p "$dest_dir"
   if [[ -f "$dest" ]]; then
     # Never overwrite: CONVENTIONS.md is aider's own user-authored file, and the
     # one sitting here may well be the reader's rather than ours. But the guard

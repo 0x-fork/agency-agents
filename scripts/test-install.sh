@@ -161,6 +161,20 @@ assert_eq 0 "$(find "$home" -type f | wc -l | tr -d ' ')" "--dry-run creates no 
 echo ""
 echo "destinations"
 
+home="$(sandbox aider-path)"
+project="$home/project"
+dest="$home/custom-dir"
+mkdir -p "$project"
+RUN_OUT="$(cd "$project" && HOME="$home" "$INSTALL" --no-interactive --tool aider --path "$dest" 2>&1)"; RUN_STATUS=$?
+assert_eq 0 "$RUN_STATUS" "Aider --path install exits 0"
+[[ -f "$dest/CONVENTIONS.md" ]] && pass "Aider --path installs into the selected directory" \
+  || fail "Aider --path installs into the selected directory"
+[[ ! -e "$project/CONVENTIONS.md" ]] && pass "Aider --path leaves the project root untouched" \
+  || fail "Aider --path leaves the project root untouched"
+printf 'My conventions\n' > "$dest/CONVENTIONS.md"
+RUN_OUT="$(cd "$project" && HOME="$home" "$INSTALL" --no-interactive --tool aider --path "$dest" 2>&1)"; RUN_STATUS=$?
+assert_eq 'My conventions' "$(cat "$dest/CONVENTIONS.md")" "Aider --path preserves an existing conventions file"
+
 home="$(sandbox default-dest)"
 run_install "$home" --tool claude-code
 assert_eq "$TOTAL_AGENTS" "$(count_md "$home/.claude/agents")" \

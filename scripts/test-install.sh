@@ -396,6 +396,17 @@ first=$(count_md "$dest")
 run_install "$home" --tool claude-code --division engineering --path "$dest"
 assert_eq "$first" "$(count_md "$dest")" "re-running installs the same set, not duplicates"
 
+# A project-owned symlink with an agent's filename must not redirect a copy
+# into another file outside the selected destination.
+home="$(sandbox symlink-destination)"
+dest="$home/dest"
+mkdir -p "$dest"
+printf 'KEEP THIS FILE\n' > "$home/sentinel"
+ln -s "$home/sentinel" "$dest/$(basename "$FIRST_ENG_FILE")"
+run_install "$home" --tool claude-code --no-convert --agent "$FIRST_ENG_SLUG" --path "$dest"
+assert_eq 1 "$RUN_STATUS" "copy mode refuses an existing agent-file symlink"
+assert_eq 'KEEP THIS FILE' "$(cat "$home/sentinel")" "symlink target is not overwritten"
+
 # ---------------------------------------------------------------------------
 echo ""
 if [[ $xfailed -gt 0 ]]; then

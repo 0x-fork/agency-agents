@@ -77,7 +77,7 @@ contextBridge.exposeInMainWorld('app', {
     // Electron's event object stays in preload; renderer callbacks receive no IPC internals.
     const listener = () => cb();
     ipcRenderer.on('update:ready', listener);
-    return () => ipcRenderer.removeListener('update:ready', listener);
+    return () => { ipcRenderer.removeListener('update:ready', listener); };
   },
 });
 ```

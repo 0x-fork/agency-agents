@@ -354,6 +354,7 @@ class PlaywrightPDFPool:
         self._active_jobs = 0
         self._recycling = False
         self._closed = False
+        self._shutdown_task = None
 
     async def _close_locked(self):
         browser, playwright = self.browser, self.playwright
@@ -394,11 +395,16 @@ class PlaywrightPDFPool:
                          height_mm: float = 297.0) -> bytes:
         async with self.semaphore:
             async with self._condition:
-                await self._condition.wait_for(lambda: not self._recycling or self._closed)
+                # At the threshold, stop admitting new jobs until this
+                # generation drains; sustained traffic cannot starve recycling.
+                await self._condition.wait_for(lambda: self._closed or (
+                    not self._recycling and (self.job_counter < self.max_jobs_before_recycle
+                                            or self._active_jobs == 0)
+                ))
                 if self._closed:
                     raise RuntimeError("PDF pool is shut down")
-                # Automatic recycling is opportunistic at an idle boundary, never
-                # in the middle of another request's render. No recursive lock.
+                # Drain at the configured threshold without interrupting active
+                # renders or reacquiring a lock held by the same coroutine.
                 if self._active_jobs == 0 and self.job_counter >= self.max_jobs_before_recycle:
                     await self._close_locked()
                 await self._initialize_locked()
@@ -446,12 +452,19 @@ class PlaywrightPDFPool:
                 self._recycling = False
                 self._condition.notify_all()
 
-    async def shutdown(self):
+    async def _finish_shutdown(self):
         async with self._condition:
-            self._closed = True
             self._condition.notify_all()
             await self._condition.wait_for(lambda: self._active_jobs == 0 and not self._recycling)
             await self._close_locked()
+
+    async def shutdown(self):
+        # Retain cleanup: cancelling a caller must not abandon the browser
+        # after in-flight renders finish.
+        self._closed = True
+        if self._shutdown_task is None:
+            self._shutdown_task = asyncio.create_task(self._finish_shutdown())
+        await asyncio.shield(self._shutdown_task)
 ```
 
 ### 4. 1:1 Sheet Canvas Viewport Scaler Architecture (CSS & React)

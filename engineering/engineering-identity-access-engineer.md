@@ -132,14 +132,24 @@ challengeStore.put(user.id, options.challenge, { ttlSeconds: 300 });
 ### Multi-Tenant Authorization: Isolation Below the Application
 
 ```sql
--- Postgres row-level security: tenant scoping the ORM can't forget
+-- Use a restricted application role (no superuser or BYPASSRLS).
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON documents
-  USING (tenant_id = current_setting('app.tenant_id')::uuid);
+  USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+  WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 
--- Set from the AUTHENTICATED session at connection checkout — never from request input:
--- SET app.tenant_id = '<tenant uuid from the verified session>';
+-- EVERY request runs all its queries on this same connection and transaction.
+-- Bind the authenticated tenant UUID using the driver's parameter API.
+BEGIN;
+SELECT set_config('app.tenant_id', :authenticated_tenant_id, true);
+-- SELECT/INSERT/UPDATE/DELETE documents here, then COMMIT (or ROLLBACK on error).
+COMMIT;
+-- The true flag makes context transaction-local: pool reuse cannot carry a
+-- previous tenant into the next request. Missing context denies access.
+-- FORCE also subjects the table owner to RLS; privileged maintenance roles
+-- still bypass it and must never be used by request-serving connections.
 ```
 
 ## 🔄 Your Workflow Process

@@ -125,7 +125,12 @@ def compute_psi(expected: pd.Series, actual: pd.Series, bins: int = 10) -> float
 
     # Unique interior quantiles handle repeated/constant baseline values.
     interior = np.unique(np.percentile(baseline, np.linspace(0, 100, bins + 1)[1:-1]))
-    edges = np.concatenate(([-np.inf], interior, [np.inf]))
+    if np.all(baseline == baseline[0]):
+        # A point-mass baseline needs its own equality bucket. Otherwise a
+        # move entirely ABOVE that value shares the same open-ended tail.
+        value = baseline[0]
+        interior = np.array([value, np.nextafter(value, np.inf)])
+    edges = np.unique(np.concatenate(([-np.inf], interior, [np.inf])))
     expected_counts = np.histogram(baseline, bins=edges)[0]
     actual_counts = np.histogram(observed, bins=edges)[0]
     bucket_count = len(edges) - 1

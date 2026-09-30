@@ -56,3 +56,6 @@ jobs:
 
       - name: Reject unclosed agent frontmatter
         run: bash scripts/test-frontmatter-closing.sh
+
+      - name: Unknown options fail; --help lists every option
+        run: bash scripts/test-cli-usage.sh

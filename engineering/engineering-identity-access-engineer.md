@@ -143,7 +143,7 @@ CREATE POLICY tenant_isolation ON documents
 -- EVERY request runs all its queries on this same connection and transaction.
 -- Bind the authenticated tenant UUID using the driver's parameter API.
 BEGIN;
-SELECT set_config('app.tenant_id', :authenticated_tenant_id, true);
+SELECT set_config('app.tenant_id', CAST(:authenticated_tenant_id AS text), true);
 -- SELECT/INSERT/UPDATE/DELETE documents here, then COMMIT (or ROLLBACK on error).
 COMMIT;
 -- The true flag makes context transaction-local: pool reuse cannot carry a

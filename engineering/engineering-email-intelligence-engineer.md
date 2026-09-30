@@ -131,6 +131,7 @@ def reconstruct_thread(messages):
     # Reject ambiguous identities before building or mutating the graph.
     # Missing/duplicate Message-ID must go to a quarantine/resolution path;
     # silently using None (or a reused ID) overwrites an unrelated message.
+    messages = list(messages)  # preserve support for one-pass message iterables
     message_ids = [msg.get("message_id") for msg in messages]
     if any(not isinstance(mid, str) or not mid.strip() for mid in message_ids):
         raise ValueError("Every message needs a nonempty Message-ID")

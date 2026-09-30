@@ -33,8 +33,9 @@
 # Selection (compose freely; empty = everything):
 #   --tool <a,b>          Only these tools
 #   --division <a,b>      Only these teams/divisions (comma-separated)
-#   --agent <slug,slug>   Only these specific agents
-#   --agents-file <path>  Agents listed in a file (one slug/name per line, # comments ok)
+#   --agent <id,id>       Only these specific agents (install slug, display name,
+#                         or file stem such as engineering-frontend-developer)
+#   --agents-file <path>  Agents listed in a file (one id per line, # comments ok)
 #
 # Mode:
 #   --link                Symlink instead of copy (updates propagate)
@@ -165,6 +166,7 @@ AGENTS_FILE=""           # --agents-file
 DRY_RUN=false            # --dry-run
 SELECTION_ACTIVE=false   # true once any agent-level filter is applied
 _ALLOWED_SLUGS=""        # newline-delimited cache of allowed slugs
+_ROSTER_INDEX=""         # "<install slug>\t<file stem>" per agent; see roster_index
 
 # division_files <division> — agent file paths (frontmatter only) in a division.
 division_files() {
@@ -178,16 +180,43 @@ division_files() {
 # division_count <division> — number of agents in a division.
 division_count() { division_files "$1" | grep -c . ; }
 
-# agent_slug_exists <slug> — verify a requested agent against the source roster.
-# Selection filters should fail before installation when they name nothing that
-# can be installed; otherwise dry-run counts and completion messages lie.
-agent_slug_exists() {
-  local target="$1" div f
+# roster_index — fill _ROSTER_INDEX with one "<install slug>\t<file stem>" line
+# per agent, once. Call it in the parent shell before resolve_agent: a $(...)
+# caller would build its own copy and throw it away.
+#
+# Resolving each requested agent used to rescan the roster, running get_field
+# on all 279 files per request, so a 36-agent runbook roster cost ~10,000
+# get_field calls before anything installed.
+roster_index() {
+  [[ -n "$_ROSTER_INDEX" ]] && return 0
+  local div f
   for div in "${ALL_DIVISIONS[@]}"; do
     while IFS= read -r f; do
-      [[ "$(agent_slug "$f")" == "$target" ]] && return 0
+      _ROSTER_INDEX+="$(agent_slug "$f")"$'\t'"$(basename "$f" .md)"$'\n'
     done < <(division_files "$div")
   done
+}
+
+# resolve_agent <requested> — print the install slug for a requested agent,
+# 1 if nothing matches. Selection filters should fail before installation when
+# they name nothing that can be installed; otherwise dry-run counts and
+# completion messages lie.
+#
+# Two spellings name an agent. The install slug comes from `name:` and is what
+# --list agents prints. The file stem is the corpus id strategy/runbooks.json
+# uses ("engineering-frontend-developer"), and for 206 of 279 agents it is not
+# the slug, so 35 of the 36 agents the runbooks list could not be selected by
+# the ids the runbooks give. Slugs are tried first; no stem equals another
+# agent's slug today, and slug-first keeps it unambiguous if one ever does.
+resolve_agent() {
+  local target="$1" slug stem
+  [[ -n "$target" ]] || return 1
+  while IFS=$'\t' read -r slug stem; do
+    [[ -n "$slug" && "$slug" == "$target" ]] && { printf '%s' "$slug"; return 0; }
+  done <<< "$_ROSTER_INDEX"
+  while IFS=$'\t' read -r slug stem; do
+    [[ -n "$slug" && "$stem" == "$target" ]] && { printf '%s' "$slug"; return 0; }
+  done <<< "$_ROSTER_INDEX"
   return 1
 }
 
@@ -199,7 +228,8 @@ build_selection() {
     return
   fi
   SELECTION_ACTIVE=true
-  local slugs="" div f s line requested
+  local slugs="" div f s line requested resolved
+  roster_index
   for div in ${FILTER_DIVISIONS[@]+"${FILTER_DIVISIONS[@]}"}; do
     while IFS= read -r f; do
       s="$(agent_slug "$f")"; [[ -n "$s" ]] && slugs+="$s"$'\n'
@@ -207,11 +237,11 @@ build_selection() {
   done
   for s in ${FILTER_AGENTS[@]+"${FILTER_AGENTS[@]}"}; do
     requested="$(slugify "$s")"
-    if ! agent_slug_exists "$requested"; then
+    if ! resolved="$(resolve_agent "$requested")"; then
       err "Unknown agent '$s'. Use --list agents to see the available roster."
       exit 1
     fi
-    slugs+="$requested"$'\n'
+    slugs+="$resolved"$'\n'
   done
   if [[ -n "$AGENTS_FILE" ]]; then
     [[ -f "$AGENTS_FILE" ]] || { err "agents-file not found: $AGENTS_FILE"; exit 1; }
@@ -220,11 +250,11 @@ build_selection() {
       line="$(printf '%s' "$line" | xargs 2>/dev/null)" # trim
       [[ -z "$line" ]] && continue
       requested="$(slugify "$line")"
-      if ! agent_slug_exists "$requested"; then
+      if ! resolved="$(resolve_agent "$requested")"; then
         err "Unknown agent '$line' in agents-file '$AGENTS_FILE'."
         exit 1
       fi
-      slugs+="$requested"$'\n'
+      slugs+="$resolved"$'\n'
     done < "$AGENTS_FILE"
   fi
   _ALLOWED_SLUGS="$(printf '%s' "$slugs" | sort -u | sed '/^$/d')"

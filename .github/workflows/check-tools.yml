@@ -56,3 +56,12 @@ jobs:
 
       - name: Reject unclosed agent frontmatter
         run: bash scripts/test-frontmatter-closing.sh
+
+      - name: Reject code fences that do not nest or never close
+        run: bash scripts/test-lint-fences.sh
+
+      - name: Unknown options fail; --help lists every option
+        run: bash scripts/test-cli-usage.sh
+
+      - name: Keep installing after one tool fails, then exit non-zero
+        run: bash scripts/test-install-continue-after-failure.sh

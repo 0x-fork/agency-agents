@@ -86,10 +86,22 @@ SET LOCAL statement_timeout = '5s';
 ALTER TABLE orders ADD COLUMN status VARCHAR;
 COMMIT;
 
--- 2. Deploy writers that always set status; wait for ALL old writers to drain.
--- Keep reads compatible with NULL during the transition.
--- 3. Gate new NULLs BEFORE the backfill: NOT VALID skips checking historical rows,
--- but immediately checks every newly inserted or updated row.
+-- 2. Set the default separately: new inserts that omit status receive 'pending'.
+-- Existing rows remain NULL, so unrelated UPDATEs can continue before backfill.
+BEGIN;
+SET LOCAL lock_timeout = '1s';
+SET LOCAL statement_timeout = '5s';
+ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'pending';
+COMMIT;
+
+-- 3. Deploy writers that never explicitly insert or update status to NULL;
+-- wait for ALL old writers to drain. Keep reads compatible with historical NULLs.
+-- 4. BACKFILL bounded batches, committing each batch (:lo/:hi are runner parameters).
+UPDATE orders SET status = 'pending'
+WHERE status IS NULL AND id BETWEEN :lo AND :hi;
+
+-- 5. Gate new NULLs AFTER backfill: even a NOT VALID CHECK checks every UPDATE,
+-- including an unrelated column update on a legacy row whose status is NULL.
 BEGIN;
 SET LOCAL lock_timeout = '1s';
 SET LOCAL statement_timeout = '5s';
@@ -97,11 +109,7 @@ ALTER TABLE orders ADD CONSTRAINT status_not_null
     CHECK (status IS NOT NULL) NOT VALID;
 COMMIT;
 
--- 4. BACKFILL bounded batches, committing each batch (:lo/:hi are runner parameters).
-UPDATE orders SET status = 'pending'
-WHERE status IS NULL AND id BETWEEN :lo AND :hi;
-
--- 5. VALIDATE separately: SHARE UPDATE EXCLUSIVE permits normal reads/writes,
+-- 6. VALIDATE separately: SHARE UPDATE EXCLUSIVE permits normal reads/writes,
 -- but can conflict with other maintenance/DDL. Set a realistic scan budget.
 BEGIN;
 SET LOCAL lock_timeout = '1s';
@@ -109,7 +117,7 @@ SET LOCAL statement_timeout = '10min';
 ALTER TABLE orders VALIDATE CONSTRAINT status_not_null;
 COMMIT;
 
--- 6. Optional SET NOT NULL: a valid CHECK lets PostgreSQL skip the table scan,
+-- 7. Optional SET NOT NULL: on PostgreSQL 12+, a valid CHECK skips the table scan,
 -- but an ACCESS EXCLUSIVE lock is still needed. Drop the CHECK in a later step.
 BEGIN;
 SET LOCAL lock_timeout = '1s';
@@ -117,13 +125,17 @@ SET LOCAL statement_timeout = '5s';
 ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 COMMIT;
 
--- CONTRACT old read paths only in a later release. After step 3, rolling back
--- to a writer that omits status is unsafe until the constraint is relaxed.
+-- CONTRACT old read paths only in a later release. After step 5, rolling back
+-- to a writer that explicitly writes NULL is unsafe until the constraint is relaxed.
 -- Index build is outside a transaction; concurrent builds still take locks.
+-- A failed concurrent build can leave an INVALID index: inspect it, then drop
+-- that invalid index before retrying (outside a transaction as well).
 CREATE INDEX CONCURRENTLY idx_orders_status ON orders (status);
 ```
 
-See [PostgreSQL ALTER TABLE lock and constraint semantics](https://www.postgresql.org/docs/current/sql-altertable.html). Test both an open reader that forces step 1 to time out and an old writer attempting a NULL after step 3. A failed batch can be replayed because it updates only NULL rows; validation is the proof that all historical rows now satisfy the invariant.
+For a constant default such as this example's `'pending'`, PostgreSQL 11+ can instead add `status VARCHAR NOT NULL DEFAULT 'pending'` in one metadata-only operation, still under a short exclusive lock. The staged backfill pattern is needed when historical values must be computed per row; adapt the batch expression to that computation.
+
+See [PostgreSQL ALTER TABLE lock and constraint semantics](https://www.postgresql.org/docs/current/sql-altertable.html). Test an open reader that forces step 1 to time out, an unrelated UPDATE on a legacy NULL row before its backfill, and an explicit NULL write after step 5. A failed batch can be replayed because it updates only NULL rows; validation is the proof that all historical rows now satisfy the invariant.
 
 ### Reliability Metrics & Guards
 

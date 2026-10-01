@@ -341,12 +341,20 @@ install_file() {
 # path_collision_group <tool> — tools in the same group write identical
 # filenames into a shared --path and would overwrite each other; empty means
 # the tool's output is distinct and may share a path with anything. Derived by
-# installing one agent with every tool into a sandbox and comparing what
-# landed; re-measure if a converter's output naming changes.
+# installing agents with every tool into a sandbox and comparing what landed;
+# re-measure if a converter's output naming changes.
+#
+# claude-code and copilot copy the source file under its own name. For most
+# agents that is <division>-<slug>.md, but 73 of 279 are named <slug>.md
+# already (all of game-development/, most of specialized/), and for those the
+# name is exactly what gemini-cli, opencode, qwen and zcode write. Measuring
+# with one engineering agent missed that, so `--tool claude-code,qwen --path X`
+# reported both installs OK while qwen overwrote the Claude Code file. One
+# group, because a full install collides on 73 files, not zero.
 path_collision_group() {
   case "$1" in
-    claude-code|copilot)             printf 'raw-source-md' ;;  # <division>-<slug>.md
-    gemini-cli|opencode|qwen|zcode)  printf 'slug-md' ;;        # <slug>.md
+    claude-code|copilot|gemini-cli|opencode|qwen|zcode)
+                                     printf 'agent-md' ;;       # <slug>.md, or the source's name
     antigravity|osaurus|dsh)         printf 'agency-skill' ;;   # agency-<slug>/SKILL.md
     *)                               printf '' ;;
   esac

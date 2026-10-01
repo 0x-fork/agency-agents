@@ -56,3 +56,6 @@ jobs:
 
       - name: Reject unclosed agent frontmatter
         run: bash scripts/test-frontmatter-closing.sh
+
+      - name: Reject code fences that do not nest or never close
+        run: bash scripts/test-lint-fences.sh

@@ -330,7 +330,7 @@ elif not colour_bad:
 # block in half and leaves each file holding a dangling fence, which renders as
 # broken markdown for every user of that integration (#849). So every fenced
 # block in a source must land intact in exactly one of the two files.
-SPLIT_FENCE = re.compile(r"^(`{3,}|~{3,})")
+SPLIT_FENCE = re.compile(r"^(`{3,}|~{3,})(.*)$")
 
 def body_lines(text):
     """Mirror lib.sh's get_body, including `$(...)`'s trailing-newline strip."""
@@ -352,10 +352,11 @@ def fence_blocks(lines):
         m = SPLIT_FENCE.match(line)
         if not m:
             continue
-        tok = m.group(1)
+        tok, rest = m.group(1), m.group(2)
         if not marker:
             marker, mlen, start = tok[0], len(tok), i
-        elif tok[0] == marker and len(tok) >= mlen:
+        elif tok[0] == marker and len(tok) >= mlen and not rest.strip():
+            # only a bare run closes: "```bash" inside a block is content (lib.sh fence_closes_p)
             res.append((start, i)); marker, mlen, start = "", 0, None
     if marker and start is not None:
         res.append((start, len(lines) - 1))

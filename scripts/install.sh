@@ -283,26 +283,30 @@ OVERRIDE_PATH=""      # --path (single-destination override)
 
 # install_file <src> <dest> — copy, or symlink when --link is set.
 install_file() {
-  if $USE_LINK; then
-    ln -sf "$1" "$2"
-  else
-    local target="$2"
-    [[ -d "$target" ]] && target="${target%/}/$(basename "$1")"
-    if [[ -L "$target" ]]; then
-      # cp would follow the link and overwrite whatever it points at.
-      local link_to; link_to="$(readlink "$target")"
-      if [[ "$link_to" == "$REPO_ROOT/"* ]]; then
-        # Our own --link install: switching to a copy is the intended change.
-        rm -f -- "$target"
-      else
-        # Someone else's link: leave it and its target alone, keep installing
-        # the rest, and say so in the summary (one stray link must not abort
-        # the install halfway through the roster).
-        warn "Skipped $target — it is a symlink to $link_to; not overwriting it."
-        [[ -n "${SKIPPED_LOG:-}" ]] && printf '%s -> %s\n' "$target" "$link_to" >> "$SKIPPED_LOG"
-        return 0
-      fi
+  local target="$2"
+  # Directory destinations have a trailing slash. Do not follow a leaf
+  # symlink to a directory when deciding which file belongs to the installer.
+  if [[ "$target" == */ ]] || { ! $USE_LINK && [[ -d "$target" ]]; }; then
+    target="${target%/}/$(basename "$1")"
+  fi
+  if [[ -L "$target" ]]; then
+    local link_to; link_to="$(readlink "$target")"
+    if [[ "$link_to" == "$REPO_ROOT/"* ]]; then
+      # An installer-owned link may be refreshed or switched to a copy.
+      rm -f -- "$target"
+    else
+      warn "Skipped $target — it is a symlink to $link_to; not overwriting it."
+      [[ -n "${SKIPPED_LOG:-}" ]] && printf '%s -> %s\n' "$target" "$link_to" >> "$SKIPPED_LOG"
+      return 0
     fi
+  elif $USE_LINK && [[ -e "$target" ]]; then
+    warn "Skipped $target — it already exists; not replacing it with a symlink."
+    [[ -n "${SKIPPED_LOG:-}" ]] && printf '%s (existing file)\n' "$target" >> "$SKIPPED_LOG"
+    return 0
+  fi
+  if $USE_LINK; then
+    ln -s "$1" "$target"
+  else
     cp "$1" "$2"
   fi
 }
@@ -1708,9 +1712,9 @@ main() {
   box_bot
   printf "\n"
   if [[ -s "$SKIPPED_LOG" ]]; then
-    warn "Not installed: $(wc -l < "$SKIPPED_LOG" | tr -d ' ') file(s) whose destination is a symlink to somewhere else:"
+    warn "Not installed: $(wc -l < "$SKIPPED_LOG" | tr -d ' ') file(s) whose destination is an existing user file or foreign symlink:"
     sed 's/^/    /' "$SKIPPED_LOG" >&2
-    warn "Remove or replace those links, then re-run to install them."
+    warn "Move or remove those destinations, then re-run to install them."
   fi
   dim "  Run ./scripts/convert.sh to regenerate after adding or editing agents."
   printf "\n"

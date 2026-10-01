@@ -112,6 +112,15 @@ lint_file() {
     return
   fi
 
+  # The lightweight converters read plain or quoted scalar fields. A folded
+  # block otherwise passes presence checks but leaks its YAML indicator into
+  # the generated value.
+  if grep -qE '^[[:space:]]*[[:alnum:]_-]+:[[:space:]]*>([-+][1-9]?|[1-9][-+]?)?([[:space:]]+#.*)?[[:space:]]*$' <<<"$frontmatter"; then
+    echo "ERROR $file: folded YAML frontmatter is unsupported — use a single-line scalar"
+    errors=$((errors + 1))
+    return
+  fi
+
   # 2. Check required frontmatter fields
   for field in "${REQUIRED_FRONTMATTER[@]}"; do
     if ! grep -qE -- "^${field}:" <<<"$frontmatter"; then

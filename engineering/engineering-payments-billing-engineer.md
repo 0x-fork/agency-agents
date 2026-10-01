@@ -70,6 +70,10 @@ interface WebhookInbox {
   // A duplicate never overwrites payload or resets completed work. Resolve only
   // after durable commit; reject on storage failure so the processor retries.
   accept(event: Stripe.Event): Promise<void>;
+  // Atomically lease pending/expired work (e.g. FOR UPDATE SKIP LOCKED), increment
+  // attempts, and return its payload. Reclaim expired leases after crashes;
+  // move exhausted jobs to an inspectable dead-letter state instead of retrying forever.
+  claim(maxAttempts: number): Promise<Stripe.Event | null>;
   // Mark complete only after side effects succeed. Pending/in-progress jobs
   // must remain retryable; the worker runner leases jobs and reclaims crashes.
   complete(eventId: string): Promise<void>;
@@ -105,6 +109,7 @@ export async function processStripeEvent(
 ): Promise<void> {
   switch (event.type) {
     case 'payment_intent.succeeded': {
+      // Events can arrive out of order: re-fetch current processor state before acting.
       const pi = await stripe.paymentIntents.retrieve(
         (event.data.object as Stripe.PaymentIntent).id
       );

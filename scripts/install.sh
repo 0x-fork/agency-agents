@@ -1723,7 +1723,8 @@ main() {
   fi
   printf "\n"
 
-  local installed=0 t i=0
+  local installed=0 t i=0 rc
+  local failed=()
   if $use_parallel; then
     local install_out_dir
     install_out_dir="$(mktemp -d)"
@@ -1742,16 +1743,37 @@ main() {
       progress_bar "$i" "$n_selected"
       printf "\n"
       printf "  ${C_DIM}[%s/%s]${C_RESET} %s\n" "$i" "$n_selected" "$t"
-      install_tool "$t"
-      (( installed++ )) || true
+      # One tool failing must not cost the tools after it. A bare
+      # install_tool under set -e exited the whole script at the first
+      # `return 1`, so a missing integrations/cursor meant qwen, codex and
+      # every later tool were never tried and nothing said so.
+      #
+      # Not `install_tool "$t" || ...`: bash ignores errexit inside anything
+      # run on the left of || (subshell included), so a failing cp inside a
+      # tool would carry on as if it had worked. The subshell turns errexit
+      # back on for itself while the parent's is off for this one command.
+      set +e
+      ( set -e; install_tool "$t" )
+      rc=$?
+      set -e
+      if (( rc == 0 )); then
+        (( installed++ )) || true
+      else
+        failed+=("$t")
+      fi
     done
   fi
 
   # Done box
   local msg="  Done!  Installed $installed tool(s)."
+  (( ${#failed[@]} )) && msg="  Installed $installed of $n_selected tool(s)."
   printf "\n"
   box_top
-  box_row "${C_GREEN}${C_BOLD}${msg}${C_RESET}"
+  if (( ${#failed[@]} )); then
+    box_row "${C_YELLOW}${C_BOLD}${msg}${C_RESET}"
+  else
+    box_row "${C_GREEN}${C_BOLD}${msg}${C_RESET}"
+  fi
   box_bot
   printf "\n"
   if [[ -s "$SKIPPED_LOG" ]]; then
@@ -1761,6 +1783,10 @@ main() {
   fi
   dim "  Run ./scripts/convert.sh to regenerate after adding or editing agents."
   printf "\n"
+  if (( ${#failed[@]} )); then
+    err "Failed: ${failed[*]} — see the [ERR] line under each above. The other tools installed."
+    exit 1
+  fi
 }
 
 main "$@"

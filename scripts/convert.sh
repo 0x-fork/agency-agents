@@ -6,6 +6,7 @@
 # converted files to integrations/<tool>/. Run this to regenerate all
 # integration files after adding or modifying agents.
 #
+# --- USAGE-START ---  (sentinel for usage(); do not remove)
 # Usage:
 #   ./scripts/convert.sh [--tool <name>] [--out <dir>] [--parallel] [--jobs N] [--help]
 #
@@ -30,8 +31,12 @@
 # Output is written to integrations/<tool>/ relative to the repo root.
 # This script never touches user config dirs — see install.sh for that.
 #
+#   --tool <name>    Convert for one tool (default: all).
+#   --out <dir>      Write to <dir>/<tool>/ instead of integrations/<tool>/.
 #   --parallel       When tool is 'all', run independent tools in parallel (output order may vary).
 #   --jobs N         Max parallel jobs when using --parallel (default: nproc or 4).
+#
+# --- USAGE-END ---  (sentinel for usage(); do not remove)
 
 set -euo pipefail
 
@@ -77,9 +82,18 @@ AGENT_DIRS=(
 )
 
 # --- Usage ---
+# usage [status] — print the header between the USAGE sentinels and exit.
+# `--help` exits 0 on stdout; an unknown option exits 1 with the text on
+# stderr. The old hard-coded `sed -n '3,28p'` stopped above --parallel,
+# --jobs and --out, and exiting 0 after "Unknown option" meant a mistyped
+# flag in CI or a wrapper script read as success.
 usage() {
-  sed -n '3,28p' "$0" | sed 's/^# \{0,1\}//'
-  exit 0
+  local status="${1:-0}"
+  local text
+  text="$(sed -n '/^# --- USAGE-START ---/,/^# --- USAGE-END ---/p' "$0" \
+    | sed -e '1d;$d' -e 's/^# \{0,1\}//')"
+  if (( status == 0 )); then printf '%s\n' "$text"; else printf '%s\n' "$text" >&2; fi
+  exit "$status"
 }
 
 # Default parallel job count (nproc on Linux; sysctl on macOS when nproc missing)
@@ -793,7 +807,7 @@ main() {
       --parallel) use_parallel=true; shift ;;
       --jobs)     parallel_jobs="${2:?'--jobs requires a value'}"; shift 2 ;;
       --help|-h)  usage ;;
-      *)          error "Unknown option: $1"; usage ;;
+      *)          error "Unknown option: $1"; usage 1 ;;
     esac
   done
 

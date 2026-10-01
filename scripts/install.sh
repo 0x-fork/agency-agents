@@ -498,9 +498,14 @@ usage() {
   # (excluding the sentinel lines themselves) and strip the leading "# ".
   # Using sentinels instead of hard-coded line numbers means adding lines
   # to the header comment block won't silently break --help output.
-  sed -n '/^# --- USAGE-START ---/,/^# --- USAGE-END ---/p' "$0" \
-    | sed -e '1d;$d' -e 's/^# \{0,1\}//'
-  exit 0
+  # An unknown option passes 1: the text goes to stderr and the exit is
+  # non-zero, so a mistyped flag in CI or a wrapper script is not a success.
+  local status="${1:-0}"
+  local text
+  text="$(sed -n '/^# --- USAGE-START ---/,/^# --- USAGE-END ---/p' "$0" \
+    | sed -e '1d;$d' -e 's/^# \{0,1\}//')"
+  if (( status == 0 )); then printf '%s\n' "$text"; else printf '%s\n' "$text" >&2; fi
+  exit "$status"
 }
 
 # Default parallel job count (nproc on Linux; sysctl on macOS when nproc missing)
@@ -1595,7 +1600,7 @@ main() {
       --parallel)        use_parallel=true; shift ;;
       --jobs)            parallel_jobs="${2:?'--jobs requires a value'}"; shift 2 ;;
       --help|-h)         usage ;;
-      *)                 err "Unknown option: $1"; usage ;;
+      *)                 err "Unknown option: $1"; usage 1 ;;
     esac
   done
 

@@ -375,7 +375,11 @@ dest="$home/My [Agents]/dest dir"
 list="$home/my agents list.txt"
 { echo "# one agent, listed in a file whose own path has spaces"; echo "$FIRST_ENG_SLUG"; } > "$list"
 run_install "$home" --tool claude-code,codex --parallel --jobs 1 --agents-file "$list" --path "$dest"
-assert_eq 0 "$RUN_STATUS" "--parallel with a spaced/globbed --path exits 0"
+# This used to pass for the wrong reason: the workers get the spaced path split
+# into words, reject the stray words as unknown options, and usage() exited 0,
+# so every worker "succeeded" having installed nothing (the count below).
+# Unknown options exit 1 now, so the exit code tells the truth until #755 lands.
+xfail_eq 0 "$RUN_STATUS" "--parallel with a spaced/globbed --path exits 0" "PR #755"
 xfail_eq 1 "$(count_md "$dest")" \
   "--parallel installs exactly the one selected agent (spaced --path + --agents-file)" "PR #755"
 

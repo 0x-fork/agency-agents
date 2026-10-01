@@ -59,3 +59,6 @@ jobs:
 
       - name: Reject code fences that do not nest or never close
         run: bash scripts/test-lint-fences.sh
+
+      - name: Unknown options fail; --help lists every option
+        run: bash scripts/test-cli-usage.sh

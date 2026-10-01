@@ -150,6 +150,9 @@ COMMIT;
 -- previous tenant into the next request. Missing context denies access.
 -- FORCE also subjects the table owner to RLS; privileged maintenance roles
 -- still bypass it and must never be used by request-serving connections.
+-- Objects called by requests must also use the caller's restricted privileges:
+-- avoid privileged SECURITY DEFINER functions and bypass-capable view owners;
+-- use security_invoker views where supported.
 ```
 
 ## 🔄 Your Workflow Process

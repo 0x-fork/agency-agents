@@ -470,13 +470,55 @@ HEREDOC
   fi
 }
 
+# qwen_tools <claude-tools> — the source's Claude Code tool list, renamed to the
+# tools Qwen Code registers.
+#
+# Sources list tools by Claude Code name ("WebFetch, WebSearch, Read, Write,
+# Edit"). Qwen resolves each entry against its own registry by tool name or
+# display name, and keeps an entry that matches neither as-is, so it matches
+# no tool (subagent-manager.ts resolveToolNames). Edit, WebFetch, WebSearch,
+# Grep and Glob happen to be Qwen display names too. Read, Write and Bash are
+# not (Qwen's are ReadFile, WriteFile and Shell), and `tools:` is an
+# allow-list, so those agents came up in Qwen able to edit files but not read
+# or create them, and the seven that list Bash with no shell.
+#
+# Names are mapped to Qwen's canonical tool names (tools/tool-names.ts); an
+# entry with no Qwen equivalent passes through unchanged.
+qwen_tools() {
+  local out="" t q
+  local IFS=','
+  for t in $1; do
+    t="${t#"${t%%[![:space:]]*}"}"; t="${t%"${t##*[![:space:]]}"}"
+    [[ -n "$t" ]] || continue
+    case "$t" in
+      Read)         q="read_file" ;;
+      Write)        q="write_file" ;;
+      Edit)         q="edit" ;;
+      MultiEdit)    q="edit" ;;
+      Bash)         q="run_shell_command" ;;
+      Grep)         q="grep_search" ;;
+      Glob)         q="glob" ;;
+      LS)           q="list_directory" ;;
+      WebFetch)     q="web_fetch" ;;
+      WebSearch)    q="web_search" ;;
+      TodoWrite)    q="todo_write" ;;
+      NotebookEdit) q="notebook_edit" ;;
+      Task)         q="agent" ;;
+      *)            q="$t" ;;
+    esac
+    case ", $out, " in *", $q, "*) continue ;; esac   # MultiEdit + Edit -> one edit
+    out="${out:+$out, }$q"
+  done
+  printf '%s' "$out"
+}
+
 convert_qwen() {
   local file="$1"
   local name description tools slug outfile body
 
   name="$(get_field "name" "$file")"
   description="$(get_field "description" "$file")"
-  tools="$(get_field "tools" "$file")"
+  tools="$(qwen_tools "$(get_field "tools" "$file")")"
   slug="$(slugify "$name")"
   body="$(get_body "$file")"
 

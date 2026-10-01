@@ -414,6 +414,44 @@ if os.path.isfile(aider_index):
     elif len(text) <= AIDER_INDEX_CEILING:
         ok(f"aider: index is {len(text):,} characters and all {N} agent paths resolve")
 
+# --- Layer A (tool names): Qwen only grants tools it can name ---------------
+# A Qwen subagent's `tools:` is an allow-list resolved against Qwen's registry
+# by tool name or display name; an entry matching neither is kept as-is and
+# grants nothing. Sources list Claude Code names, and Read/Write/Bash are not
+# Qwen names, so they have to be translated (convert.sh qwen_tools). Every
+# entry must be a Qwen built-in by a spelling Qwen resolves (tool name, display
+# name or legacy alias; packages/core/src/tools/tool-names.ts) or an MCP tool.
+QWEN_TOOLS = {
+    # tool names
+    "read_file", "write_file", "edit", "run_shell_command", "grep_search", "glob",
+    "list_directory", "web_fetch", "web_search", "todo_write", "notebook_edit", "agent",
+    # display names
+    "ReadFile", "WriteFile", "Edit", "Shell", "Grep", "Glob", "ListFiles", "WebFetch",
+    "WebSearch", "TodoList", "NotebookEdit", "Agent",
+    # legacy aliases
+    "SearchFiles", "FindFiles", "ReadFolder", "Task", "TodoWrite",
+    "search_file_content", "replace", "task",
+}
+qwen_bad = []
+for f in sorted(glob.glob(os.path.join(OUT, "qwen", "agents", "*.md"))):
+    try:
+        tools = (frontmatter(open(f, encoding="utf-8").read()) or {}).get("tools")
+    except Exception:
+        continue   # the strict-parse pass already reported this
+    if tools is None:
+        continue
+    entries = tools if isinstance(tools, list) else [t.strip() for t in str(tools).split(",")]
+    unknown = [t for t in entries if t and t not in QWEN_TOOLS and not t.startswith("mcp__")]
+    if unknown:
+        qwen_bad.append((os.path.basename(f)[:-3], unknown))
+for slug, unknown in qwen_bad[:3]:
+    bad(f"qwen: {slug} lists {', '.join(unknown)} — Qwen Code has no tool by that "
+        f"name, so the allow-list grants nothing for it")
+if len(qwen_bad) > 3:
+    bad(f"qwen: ...and {len(qwen_bad)-3} more agents with unknown tool names")
+if not qwen_bad:
+    ok("qwen: every tools: entry names a Qwen Code tool")
+
 # --- Layer A (app-facing): every SOURCE frontmatter strict-parsed above -------
 for m in src_bad[:5]: bad(m)
 if len(src_bad) > 5: bad(f"...and {len(src_bad)-5} more source frontmatter problems")

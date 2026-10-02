@@ -182,13 +182,12 @@ class WorkflowOptimizer:
                                  opportunities: List[Dict]) -> List[ProcessStep]:
         """Create optimized future state workflow"""
         optimized_steps = current_steps.copy()
+        # Opportunities refer to the original names; display names change below.
+        step_indexes = {step.name: i for i, step in enumerate(current_steps)}
         
         for opportunity in opportunities:
             step_name = opportunity["step"]
-            step_index = next(
-                i for i, step in enumerate(optimized_steps) 
-                if step.name == step_name
-            )
+            step_index = step_indexes[step_name]
             
             current_step = optimized_steps[step_index]
             

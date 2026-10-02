@@ -108,8 +108,8 @@ def build_few_shot_block(examples: list[dict]) -> str:
     for i, ex in enumerate(examples, 1):
         lines.append(f"<example id='{i}'>")
         # Literal XML/tag-like examples must remain text, never new delimiters.
-        lines.append(f"Input: {escape(ex['input'])}")
-        lines.append(f"Output: {escape(ex['output'])}")
+        lines.append(f"Input: {escape(str(ex['input']))}")
+        lines.append(f"Output: {escape(str(ex['output']))}")
         lines.append("</example>\n")
     return "\n".join(lines)
 ```

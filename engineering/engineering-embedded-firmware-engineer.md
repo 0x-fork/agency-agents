@@ -68,6 +68,9 @@ void app_main(void) {
 ### STM32 LL SPI Transfer (bounded polling, task context)
 
 ```c
+#include <stdbool.h>
+#include <stdint.h>
+
 // STM32 SPI with TXE/BSY flags (e.g. STM32F4); not an ISR-safe or non-blocking API.
 // HAL_GetTick must advance while polling. One deadline covers both waits.
 bool spi_write_byte(SPI_TypeDef *spi, uint8_t data, uint32_t timeout_ms) {

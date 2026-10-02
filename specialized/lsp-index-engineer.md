@@ -182,8 +182,11 @@ class GraphBuilder {
     const symbolPromises = files.map(file => 
       this.extractSymbols(file).then(symbols => {
         for (const sym of symbols) {
+          // Names repeat across files and scopes. Use the definition location
+          // for identity, and the same ID when resolving references later.
+          const symbolId = `sym:${JSON.stringify([file, sym.range.start.line, sym.range.start.character, sym.name])}`;
           graph.addNode({
-            id: `sym:${sym.name}`,
+            id: symbolId,
             kind: sym.kind,
             file: file,
             range: sym.range
@@ -192,7 +195,7 @@ class GraphBuilder {
           // Add contains edge
           graph.addEdge({
             source: `file:${file}`,
-            target: `sym:${sym.name}`,
+            target: symbolId,
             type: 'contains'
           });
         }

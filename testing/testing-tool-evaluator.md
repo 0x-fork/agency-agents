@@ -227,7 +227,13 @@ class ToolEvaluator:
         return speed_score, notes
     
     def calculate_total_cost_ownership(self, tool_config: Dict, years: int = 3) -> Dict:
-        """Calculate comprehensive TCO analysis"""
+        """Calculate TCO only for a defined positive adoption horizon."""
+        users = tool_config.get("expected_users", 1)
+        if isinstance(years, bool) or not isinstance(years, int) or years <= 0:
+            raise ValueError("years must be a positive integer")
+        if (isinstance(users, bool) or not isinstance(users, (int, float))
+                or not np.isfinite(users) or users <= 0):
+            raise ValueError("expected_users must be a positive finite number")
         costs = {
             "licensing": tool_config.get("annual_license_cost", 0) * years,
             "implementation": tool_config.get("implementation_cost", 0),
@@ -241,7 +247,6 @@ class ToolEvaluator:
         total_cost = sum(costs.values())
         
         # Calculate cost per user per year
-        users = tool_config.get("expected_users", 1)
         cost_per_user_year = total_cost / (users * years)
         
         return {

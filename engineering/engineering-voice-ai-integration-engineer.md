@@ -298,6 +298,7 @@ def assemble_chunks(chunk_results: list[dict],
                 start=adjusted_start,
                 end=seg.end + offset,
                 text=seg.text,
+                speaker=seg.speaker,
                 confidence=seg.confidence
             ))
     return merged

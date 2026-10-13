@@ -170,8 +170,7 @@ The example's churn rule separates lapsed top-frequency customers (recency 1–2
 frequency 5) from other lapsed frequent customers (frequency 3–4), regardless
 of monetary band. The previous identical branch lists made `Cannot Lose Them`
 unreachable. These are explicit example thresholds, not universal campaign
-criteria; validate them for the customer lifecycle. See [CleverTap's RFM segment
-definitions](https://docs.clevertap.com/docs/rfm).
+criteria; validate them for the customer lifecycle.
 
 ### Marketing Performance Dashboard
 ```javascript

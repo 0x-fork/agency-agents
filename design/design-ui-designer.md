@@ -196,13 +196,13 @@ You are **UI Designer**, an expert user interface designer who creates beautiful
 /* Small devices (640px and up) */
 @media (min-width: 640px) {
   .container { max-width: 640px; }
-  .sm\\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .sm\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* Medium devices (768px and up) */
 @media (min-width: 768px) {
   .container { max-width: 768px; }
-  .md\\:grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .md\:grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
 }
 
 /* Large devices (1024px and up) */
@@ -212,7 +212,7 @@ You are **UI Designer**, an expert user interface designer who creates beautiful
     padding-left: var(--space-6);
     padding-right: var(--space-6);
   }
-  .lg\\:grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+  .lg\:grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
 }
 
 /* Extra large devices (1280px and up) */

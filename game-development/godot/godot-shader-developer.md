@@ -75,8 +75,8 @@ void fragment() {
     alpha = max(alpha, texture(TEXTURE, UV + vec2(-texel.x, -texel.y)).a);
 
     // Draw outline where neighbor has alpha but current pixel does not
-    vec4 outline = outline_color * vec4(1.0, 1.0, 1.0, alpha * (1.0 - base_color.a));
-    COLOR = base_color + outline;
+    vec4 outline = vec4(outline_color.rgb, outline_color.a * alpha * (1.0 - base_color.a));
+    COLOR = mix(outline, base_color, base_color.a);
 }
 ```
 

@@ -176,7 +176,7 @@ DESIGN BASIS: autonomy 8 h at full equipment load; ambient 15 °C minimum in bat
    Total plant current ....................... 175.8 A
    Module rating 50 A @ 53.5 V ............... 175.8 / 50 = 3.52 → 4 modules
    N+1 ....................................... 5 modules installed, 6-slot shelf
-   AC input per module at 95 % eff, PF 0.99 .. 2.85 kVA; plant AC demand 14.2 kVA (4 running)
+   AC input per module at 95 % eff, PF 0.99 .. 2.85 kVA; plant AC demand 14.2 kVA (5 modules at full output)
 
 4. RESULT
    Battery:   2 x 500 Ah (C8) strings, 48 V, with temperature-compensated float
@@ -190,14 +190,14 @@ Requires review and sign-off by a licensed electrical engineer before procuremen
 
 ```
 FEEDER: battery/rectifier bus → equipment DC distribution, TWR-0427
-STANDARD: IEC 60364-5-52:2009 Table B.52.4 (ampacity), project spec max 1.0 V drop on this feeder
+STANDARD: IEC 60364-5-52:2009 Table B.52.2 (ampacity, PVC, two loaded conductors), project spec max 1.0 V drop on this feeder
 INPUTS: I_design = 81.5 A (end of discharge, Deliverable 1)
         one-way route length L = 25 m, copper, PVC, installation method C, ambient 35 °C
         resistivity ρ = 0.0225 Ω·mm²/m (copper at 70 °C operating temperature)
 
 STEP 1 — AMPACITY
-  35 mm² Cu PVC, method C, 2 loaded conductors ....... 119 A (Table B.52.4, column 4)
-  Ambient correction 35 °C (Table B.52.14) ........... x 0.94 → 112 A ≥ 81.5 A  ✔ passes
+  35 mm² Cu PVC, method C, 2 loaded conductors ....... 138 A (Table B.52.2, column 6)
+  Ambient correction 35 °C (Table B.52.14) ........... x 0.94 → 130 A ≥ 81.5 A  ✔ passes
 
 STEP 2 — VOLTAGE DROP (two-conductor DC circuit)
   Vd = 2 x I x L x ρ / A
@@ -206,7 +206,7 @@ STEP 2 — VOLTAGE DROP (two-conductor DC circuit)
   95 mm²: 2 x 81.5 x 25 x 0.0225 / 95 = 0.97 V  ✔
 
 STEP 3 — PROTECTIVE DEVICE
-  DC fuse/breaker 100 A (≥ 81.5 A design, ≤ 95 mm² derated ampacity 233 A x 0.94 = 219 A)  ✔
+  DC fuse/breaker 100 A (≥ 81.5 A design, ≤ 95 mm² derated ampacity 258 A x 0.94 = 243 A)  ✔
   Minimum fault at far end must exceed the device's instantaneous trip: verify with IEC 61660
   once the battery internal resistance is known (MISSING from battery data sheet).
 
@@ -228,8 +228,9 @@ AC LOAD SCHEDULE (running)
   Running load ........................... 20.7 kVA
 
 MOTOR STARTING
-  Largest compressor LRA 6 x FLA (ASSUMED, no nameplate in survey) → +12.5 kVA transient
-  Peak with one compressor starting ...... 33.2 kVA for < 1 s
+  Largest compressor 2.5 kW at PF 0.85 ... 2.94 kVA running
+  LRA 6 x FLA (ASSUMED, no nameplate in survey) → start adds 5 x 2.94 = 14.7 kVA transient
+  Peak with one compressor starting ...... 20.7 + 14.7 = 35.4 kVA for < 1 s
 
 DERATING (site 1,400 m, 40 °C)
   Altitude: 3 % per 300 m above 1,000 m .. 4 %
@@ -240,7 +241,9 @@ SELECTION
   Target steady-state loading 50–75 % of prime rating (avoids wet stacking below 30 %)
   Prime rating required ≥ 20.7 / 0.75 / 0.96 = 28.8 kVA → 30 kVA prime
   Derated capacity 30 x 0.96 = 28.8 kVA; steady-state loading 72 %  ✔
-  Starting 33.2 kVA = 115 % for < 1 s: within class G2 transient tolerance per mfr curve  ✔ (confirm)
+  Starting 35.4 kVA = 123 % of derated rating for < 1 s: verify against the manufacturer's
+  motor-starting kVA curve for ISO 8528-5 class G2 (transient voltage dip ≤ 20 %);
+  if the set cannot hold the dip, specify soft starters on the compressors  (confirm)
   ATS: transfer ≤ 10 s; rectifier ride-through on battery covers the gap  ✔
 
 OPEN ITEMS: compressor nameplate LRA (MISSING), fuel tank autonomy requirement (MISSING)
@@ -253,7 +256,7 @@ Rules a platform can enforce on every submitted site record. Each failure return
 
 | Rule | Check | Severity | Reference |
 |------|-------|----------|-----------|
-| PWR-001 | Every load entry has a value, a unit (W, kW, VA or kVA) and a power factor if AC | BLOCK | IEC 60364-5-52 §525 |
+| PWR-001 | Every load entry has a value, a unit (W, kW, VA or kVA) and a power factor if AC | BLOCK | data quality |
 | PWR-002 | kW and kVA are never summed; AC demand is computed through PF | BLOCK | basic |
 | PWR-003 | Battery capacity record includes Ah, C-rate hours and end voltage per cell | BLOCK | IEEE 485 §6 |
 | PWR-004 | Autonomy computed from average discharge current, with ageing ≥ 1.25 and a temperature factor | BLOCK | IEEE 485 §6.3 |
@@ -332,7 +335,7 @@ def rule_pwr_001(a: SiteAssessment) -> list[Finding]:
                 "PWR-001", "BLOCK",
                 f"Load '{item.name}' has unit '{item.unit}' with no resolvable real power "
                 "(VA/kVA needs a power factor).",
-                "IEC 60364-5-52 §525",
+                "data quality",
             ))
     return out
 
@@ -354,7 +357,8 @@ def rule_pwr_003(a: SiteAssessment) -> list[Finding]:
 
 def rule_pwr_004(a: SiteAssessment) -> list[Finding]:
     b = a.battery
-    if b is None or b.capacity_ah is None or a.autonomy_required_h is None:
+    if (b is None or b.capacity_ah is None or b.rate_hours is None
+            or b.end_volts_per_cell is None or a.autonomy_required_h is None):
         return []  # PWR-003 already reports the gap
     if a.avg_discharge_volts is None:
         return [Finding("PWR-004", "BLOCK",
